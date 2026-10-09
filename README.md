@@ -119,8 +119,14 @@ Google are all mocked.
 
 ## 3. Environment variables
 
-Nothing is read from a `.env` file on Vercel or on a hosted worker. Set these in
-each platform's own environment configuration.
+On Vercel, nothing is read from a `.env` file — both the frontend build and the
+`api/gmail/*` functions take configuration only from the project's environment
+variables. Set the values below in each platform's own environment configuration.
+
+The one exception is the campaign worker: it reads its own `.env` when that file
+exists (the local-development source, and the file the Settings page writes) and
+otherwise the process environment, so a container platform works with no file at
+all. The precedence is spelled out in §3.3.
 
 ### 3.1 Vercel — frontend build (public)
 
