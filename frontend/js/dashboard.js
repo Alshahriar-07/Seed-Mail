@@ -1,6 +1,7 @@
 // Seed Code Mail - dashboard page
 
 import { api } from './api.js';
+import { gmail } from './lib/gmail.js';
 import { escapeHtml, icon, formatDate, refreshIcons, statusBadge, skeleton, emptyState } from './ui.js';
 import { navigate } from './app.js';
 
@@ -77,12 +78,16 @@ export async function render(container) {
         <div class="kv"><span>Email</span><span>${escapeHtml(smtp.sender_email || '—')}</span></div>
         <div class="kv"><span>Host</span><span>${escapeHtml(smtp.host || '—')}</span></div>
         <div class="kv"><span>Port</span><span>${escapeHtml(String(smtp.port || '—'))}</span></div>
-        <div class="kv"><span>Send worker</span><span>${smtp.worker_available ? 'Running' : 'Not running'}</span></div>
+        <div class="kv"><span>Send worker</span><span>${smtp.worker_queue_online ? 'Online' : (smtp.worker_available ? 'Starting' : (smtp.worker_queue_configured ? 'Not reachable' : 'Not configured'))}</span></div>
         <div class="kv"><span>App Password</span><span>${smtp.has_password ? 'Configured (worker)' : 'Not set'}</span></div>
-        ${smtp.worker_available ? '' : `<div class="notice notice-warning" style="margin-top:12px;">${icon('triangle-alert', 16)}
-          <span>Emails are sent by the local worker. Start it with <code>python worker/main.py</code> to send campaigns.</span></div>`}
+        ${smtp.worker_queue_online && smtp.has_password ? '' : `<div class="notice notice-warning" style="margin-top:12px;">${icon('triangle-alert', 16)}
+          <span>${escapeHtml(smtp.worker_note)}</span></div>`}
         <div style="margin-top:14px;"><button class="btn btn-secondary btn-block" data-goto-settings>${icon('settings-2', 15)} Open Settings</button></div>
       </div>
+    </div>
+
+    <div class="card" style="margin-top:20px;" id="mailbox-card">
+      <div class="loading-inline"><span class="spinner"></span><span>Checking Gmail connection</span></div>
     </div>
 
     <div class="card" style="margin-top:20px;">
@@ -102,4 +107,37 @@ export async function render(container) {
   container.querySelector('[data-q="import"]').addEventListener('click', () => navigate('recipients', ['import']));
   container.querySelector('[data-q="editor"]').addEventListener('click', () => navigate('editor'));
   container.querySelector('[data-q="settings"]').addEventListener('click', () => navigate('settings'));
+
+  // Mailbox card: the Gmail connection is a separate concern from the campaign
+  // send worker, and this is where a user can see which of the two is ready.
+  // It reports failure rather than hiding it.
+  const mailboxCard = container.querySelector('#mailbox-card');
+  try {
+    const status = await gmail.status();
+    const connection = status?.connection;
+    const connected = Boolean(connection?.connected);
+    mailboxCard.innerHTML = `
+      <div class="card-head"><h3>${icon('mail', 16)} Gmail mailbox</h3>
+        ${connected
+          ? '<span class="badge badge-sent"><span class="badge-dot"></span>Connected</span>'
+          : '<span class="badge badge-failed"><span class="badge-dot"></span>Not connected</span>'}</div>
+      <div class="kv"><span>Account</span><span>${escapeHtml(connected ? connection.email : '—')}</span></div>
+      <div class="kv"><span>Inbox</span><span>${connected ? 'Ready' : 'Connect to read mail'}</span></div>
+      <div class="kv"><span>Compose</span><span>${connected && connection.capabilities?.send !== false ? 'Ready' : 'Unavailable'}</span></div>
+      <div class="kv"><span>Storage</span><span>Gmail (not copied here)</span></div>
+      <div style="margin-top:14px;"><button class="btn btn-secondary btn-block" data-goto-mailbox>
+        ${icon(connected ? 'inbox' : 'link', 15)} ${connected ? 'Open Inbox' : 'Connect Gmail'}</button></div>`;
+    refreshIcons(mailboxCard);
+    mailboxCard.querySelector('[data-goto-mailbox]').addEventListener('click', () => {
+      navigate(connected ? 'inbox' : 'profile');
+    });
+  } catch (error) {
+    mailboxCard.innerHTML = `
+      <div class="card-head"><h3>${icon('mail', 16)} Gmail mailbox</h3></div>
+      <div class="notice notice-warning">${icon('triangle-alert', 16)}<span>${escapeHtml(error.message)}</span></div>
+      <div style="margin-top:12px;"><button class="btn btn-secondary btn-block" data-goto-profile>
+        ${icon('user-round', 15)} Open Profile</button></div>`;
+    refreshIcons(mailboxCard);
+    mailboxCard.querySelector('[data-goto-profile]').addEventListener('click', () => navigate('profile'));
+  }
 }

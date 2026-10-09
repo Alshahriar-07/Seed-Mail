@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- SEO ---------------------------------------------------------------- -->
-  <title>Seed Code Mail — Secure Email Campaign Management</title>
-  <meta name="description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <title>Seed Code Mail — Gmail-Connected Email Workspace</title>
+  <meta name="description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <link rel="canonical" href="https://mrseedmail.vercel.app/">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#111111">
@@ -17,8 +17,8 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Seed Code Mail">
   <meta property="og:url" content="https://mrseedmail.vercel.app/">
-  <meta property="og:title" content="Seed Code Mail — Secure Email Campaign Management">
-  <meta property="og:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta property="og:title" content="Seed Code Mail — Gmail-Connected Email Workspace">
+  <meta property="og:description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <meta property="og:image" content="https://mrseedmail.vercel.app/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -26,8 +26,8 @@
 
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Seed Code Mail — Secure Email Campaign Management">
-  <meta name="twitter:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta name="twitter:title" content="Seed Code Mail — Gmail-Connected Email Workspace">
+  <meta name="twitter:description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <meta name="twitter:image" content="https://mrseedmail.vercel.app/og-image.png">
 
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -40,6 +40,7 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
+  <link rel="stylesheet" href="/css/mail.css">
   <link rel="stylesheet" href="/css/auth.css">
 
   <!-- Structured data: only truthful, verifiable facts about the product.
@@ -52,7 +53,7 @@
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web",
     "url": "https://mrseedmail.vercel.app/",
-    "description": "Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.",
+    "description": "Read your Gmail inbox, compose and send email from your own Gmail account, and run personalised email campaigns with recipients, templates and submission history.",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
   </script>
@@ -79,9 +80,9 @@
         <h1 class="auth-brand-name">Seed Code Mail</h1>
         <p class="auth-tagline">Secure Email Campaign Management</p>
         <p class="auth-lede">
-          Sign in to manage recipients, craft custom HTML email templates and run
-          personalised campaigns with real progress, retry control and a complete
-          submission history.
+          Sign in to read your Gmail inbox, compose and send email from your own
+          account, manage recipients and templates, and run personalised campaigns
+          with real progress and a complete submission history.
         </p>
       </header>
 
@@ -92,8 +93,11 @@
       </section>
 
       <p class="auth-footnote">
-        Signed-in features require an account. Email templates are stored locally in
-        this browser and are never uploaded to the server.
+        Signed-in features require an account. Mail is read and sent through Google's
+        official Gmail API from your own account — Seed Code Mail never asks for your
+        Gmail password. Email templates stay in this browser, and a campaign saves a
+        snapshot to your own account row (protected by row level security) so the send
+        worker can deliver it.
       </p>
     </main>
   </div>
@@ -112,7 +116,7 @@
           <div class="brand-mark"><i data-lucide="mail" data-size="20"></i></div>
           <div class="brand-text">
             <span class="brand-name">Seed Code Mail</span>
-            <span class="brand-sub">Acquisition Outreach</span>
+            <span class="brand-sub">Gmail Workspace</span>
           </div>
         </div>
         <div class="sidebar-controls">
@@ -129,13 +133,22 @@
       </div>
 
       <nav class="nav" id="nav">
+        <a class="nav-item" href="#/inbox" data-route="inbox"><i data-lucide="inbox" data-size="18"></i><span>Inbox</span></a>
+        <a class="nav-item" href="#/compose" data-route="compose"><i data-lucide="pen-square" data-size="18"></i><span>Compose Email</span></a>
+        <a class="nav-item" href="#/sent" data-route="sent"><i data-lucide="send" data-size="18"></i><span>Sent</span></a>
+
+        <div class="nav-divider" role="presentation"><span>Campaigns</span></div>
         <a class="nav-item" href="#/dashboard" data-route="dashboard"><i data-lucide="layout-dashboard" data-size="18"></i><span>Dashboard</span></a>
         <a class="nav-item" href="#/recipients" data-route="recipients"><i data-lucide="users" data-size="18"></i><span>Recipients</span></a>
-        <a class="nav-item" href="#/campaigns" data-route="campaigns"><i data-lucide="send" data-size="18"></i><span>Campaigns</span></a>
+        <a class="nav-item" href="#/campaigns" data-route="campaigns"><i data-lucide="megaphone" data-size="18"></i><span>Campaigns</span></a>
         <a class="nav-item" href="#/templates" data-route="templates"><i data-lucide="layout-template" data-size="18"></i><span>Email Templates</span></a>
         <a class="nav-item" href="#/editor" data-route="editor"><i data-lucide="code" data-size="18"></i><span>Email Editor</span></a>
         <a class="nav-item" href="#/history" data-route="history"><i data-lucide="history" data-size="18"></i><span>Email History</span></a>
+
+        <div class="nav-divider" role="presentation"><span>Account</span></div>
+        <a class="nav-item" href="#/profile" data-route="profile"><i data-lucide="user-round" data-size="18"></i><span>Profile</span></a>
         <a class="nav-item" href="#/settings" data-route="settings"><i data-lucide="settings" data-size="18"></i><span>Settings</span></a>
+        <a class="nav-item" href="#/about" data-route="about"><i data-lucide="info" data-size="18"></i><span>About</span></a>
       </nav>
 
       <div class="sidebar-footer">

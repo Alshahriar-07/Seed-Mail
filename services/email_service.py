@@ -29,12 +29,24 @@ RETRYABLE_CATEGORIES = {"connection", "greeting", "temporary"}
 
 
 class SendOutcome:
-    __slots__ = ("status", "category", "message")
+    __slots__ = ("status", "category", "message", "provider", "provider_message_id")
 
-    def __init__(self, status: str, category: str = "", message: str = "") -> None:
+    def __init__(
+        self,
+        status: str,
+        category: str = "",
+        message: str = "",
+        provider: str = "smtp",
+        provider_message_id: str = "",
+    ) -> None:
         self.status = status
         self.category = category
         self.message = message
+        # Which channel produced this submission, and the id the channel gave
+        # it. SMTP returns no message id, so it stays empty — and an empty id
+        # must always be read as "not reported", never as "delivered".
+        self.provider = provider or "smtp"
+        self.provider_message_id = provider_message_id or ""
 
     @property
     def retryable(self) -> bool:

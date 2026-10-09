@@ -328,14 +328,21 @@ input, select, textarea { font-family: inherit; }
 
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 1fr; }
-  /* Mobile uses a dismissible drawer, never a permanently visible rail. */
-  .sidebar {
+  /* Mobile uses a dismissible drawer, never a permanently visible rail.
+     `visibility` is flipped instantly when opening (so focus can be moved into
+     the drawer immediately) and delayed when closing (so it can slide out). */
+  .app-shell .sidebar {
     width: min(280px, 84vw);
     transform: translateX(-100%);
     visibility: hidden;
     box-shadow: var(--shadow-lg);
+    transition: transform 0.28s var(--ease), visibility 0s linear 0.28s, box-shadow 0.28s var(--ease);
   }
-  .app-shell.sidebar-open .sidebar { transform: translateX(0); visibility: visible; }
+  .app-shell.sidebar-open .sidebar {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.28s var(--ease), visibility 0s linear 0s, box-shadow 0.28s var(--ease);
+  }
   .app-shell.sidebar-open .sidebar-scrim { opacity: 1; pointer-events: auto; }
   .main { grid-column: 1; }
   .app-shell .menu-toggle { display: inline-grid; }

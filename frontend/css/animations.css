@@ -66,7 +66,9 @@ table.data tbody tr:nth-child(5) { animation-delay: 0.12s; }
 
 /* Width (desktop collapse) and transform (mobile drawer) are both driven from
    here so the two presentations cannot fight over the same property. */
-.sidebar { transition: width 0.24s var(--ease), transform 0.28s var(--ease), visibility 0.28s var(--ease), box-shadow 0.28s var(--ease); }
+.sidebar { transition: width 0.24s var(--ease), transform 0.28s var(--ease), box-shadow 0.28s var(--ease); }
+/* The mobile drawer adds its own `visibility` timing (style.css): immediate on
+   open so focus can enter the drawer, delayed on close so it can slide out. */
 .sidebar-scrim { transition: opacity 0.24s var(--ease); }
 
 /* --- Buttons ---------------------------------------------------------------- */

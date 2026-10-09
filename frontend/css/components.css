@@ -109,6 +109,8 @@
 .badge-failed, .badge-cancelled { background: var(--error-bg); color: var(--error); }
 .badge-unknown, .badge-paused, .badge-draft { background: var(--unknown-bg); color: var(--unknown); }
 .badge-running { background: var(--black); color: var(--white); border-color: var(--black); }
+/* Queued work belongs to the remote send worker: distinct from "running". */
+.badge-queued { background: var(--warning-bg); color: var(--warning); }
 .badge-skipped { background: var(--surface-2); color: var(--muted); }
 
 /* --- Forms ----------------------------------------------------------------- */

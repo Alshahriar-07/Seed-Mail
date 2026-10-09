@@ -11,7 +11,9 @@ let host = null;
 let pollTimer = null;
 let wizardState = null;
 
-const ACTIVE_STATUSES = ['running', 'paused'];
+// `queued` belongs here: work handed to the remote send worker must be visible
+// (and cancellable) while it waits, exactly like a run in progress.
+const ACTIVE_STATUSES = ['queued', 'running', 'paused'];
 
 function progressBar(counters) {
   const pct = counters?.progress ?? 0;
@@ -29,19 +31,25 @@ async function paintActive() {
     if (!active) { box.innerHTML = ''; box.style.display = 'none'; return; }
     box.style.display = '';
     const c = active.counters || {};
-    const current = active.current_recipient;
+    // A queued campaign has not been claimed by the worker yet, so it has no
+    // "currently sending" recipient — saying otherwise would be a guess.
+    const current = active.status === 'running' ? active.current_recipient : null;
+    const queued = active.status === 'queued';
     box.innerHTML = `
       <div class="campaign-banner">
         <div class="meta" style="min-width:200px; flex:1;">
           <strong>${escapeHtml(active.name)} · ${statusBadge(active.status)}</strong>
           <small>${c.processed || 0} / ${c.total || 0} processed · ${c.sent || 0} submitted · ${c.failed || 0} failed · ${c.unknown || 0} unknown</small>
           <div style="margin-top:10px; max-width:420px;">${progressBar(c)}</div>
+          ${queued ? `<small style="margin-top:6px;">Queued for the send worker — it will be delivered automatically. This page can be closed.</small>` : ''}
           ${current ? `<small style="margin-top:6px;">Sending to ${escapeHtml(current.company_name)} &lt;${escapeHtml(current.email)}&gt;</small>` : ''}
         </div>
         <div class="banner-actions">
-          ${active.status === 'running'
-            ? `<button class="btn btn-secondary btn-sm" data-pause>${icon('pause', 15)} Pause</button>`
-            : `<button class="btn btn-secondary btn-sm" data-resume>${icon('play', 15)} Resume</button>`}
+          ${queued
+            ? ''
+            : (active.status === 'running'
+              ? `<button class="btn btn-secondary btn-sm" data-pause>${icon('pause', 15)} Pause</button>`
+              : `<button class="btn btn-secondary btn-sm" data-resume>${icon('play', 15)} Resume</button>`)}
           <button class="btn btn-secondary btn-sm" data-cancel>${icon('square', 15)} Cancel remaining</button>
         </div>
       </div>`;
@@ -339,7 +347,17 @@ async function onNext(modal) {
     modal.close();
     try {
       await api.startCampaign(campaign.id);
-      toast('Campaign started.', 'success');
+      // Queueing never depends on a local process. Report the worker's *real*
+      // state so nobody is told a campaign is sending when the queue consumer
+      // is offline or this deployment has no worker configured at all.
+      const worker = await api.workerStatus().catch(() => null);
+      if (worker && worker.configured === false) {
+        toast('Campaign queued, but no send worker is configured for this deployment, so it will not send yet.', 'warning');
+      } else if (worker && worker.queue && !worker.queue.consumer_online) {
+        toast('Campaign queued — it sends as soon as the send worker is available.', 'warning');
+      } else {
+        toast('Campaign queued — the send worker is online and will deliver it.', 'success');
+      }
     } catch (e) {
       toast(`Campaign created but not started: ${e.message}`, 'warning');
     }

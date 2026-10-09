@@ -4,14 +4,25 @@ Run it on the machine that owns the Gmail account:
 
     python worker/main.py
 
-It binds to 127.0.0.1 only and every endpoint except the health probe requires
-a valid Supabase access token from the signed-in user. The Gmail App Password
-never leaves this process — it is read from the worker's own ``.env`` (managed
-through the Settings page, which sends it straight here and nowhere else).
+Every endpoint except the two health probes requires a valid Supabase access
+token from the signed-in user, verified against Supabase Auth — so a user id is
+never taken from the request body. The Gmail App Password never leaves this
+process: it is read from the worker host's environment (managed through the
+Settings page, which sends it straight here and nowhere else).
+
+Locally it binds to 127.0.0.1; a hosted deployment sets WORKER_HOST=0.0.0.0 and
+restricts access with the WORKER_ALLOWED_ORIGINS allow-list plus the token check.
+
+Deployment: this process is designed to run on a host that keeps it alive
+(Render / Railway / Fly.io / a small VM / Docker) — NOT on Vercel, which cannot
+run a long-lived SMTP consumer. When SUPABASE_SERVICE_ROLE_KEY is present it also
+starts the durable queue consumer in-process (worker/queue_worker.py), so one
+deployment both serves the API and sends queued campaigns.
 
 Endpoints
     GET    /api/worker/health                  (no auth)
     GET    /api/worker/status                  (auth)
+    GET    /api/worker/queue/status            (auth)
     PUT    /api/worker/settings                (auth)
     POST   /api/worker/settings/reset          (auth)
     POST   /api/worker/test-smtp               (auth)
@@ -25,6 +36,7 @@ Endpoints
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -52,12 +64,19 @@ load_dotenv(dotenv_path=ROOT / ".env", override=False)
 
 from services.email_service import EmailService  # noqa: E402
 from services.settings_service import settings_service  # noqa: E402
+from worker import config  # noqa: E402
 from worker.auth import AuthError, TokenVerifier  # noqa: E402
+from worker.queue import QueueError, WorkerQueue, queue_configured, supabase_url  # noqa: E402
 from worker.sender import CampaignManager  # noqa: E402
 from worker.settings_overrides import SettingsOverrides  # noqa: E402
 from worker.supabase_client import SupabaseRest  # noqa: E402
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
+
+# How long a heartbeat counts as "the consumer is alive". The consumer reports
+# every poll, so three missed cycles means something is genuinely wrong.
+HEARTBEAT_FRESH_SECONDS = 90
+_HEARTBEAT_CACHE_SECONDS = 10.0
 
 DEFAULT_ORIGINS = [
     # Vite dev server and preview
@@ -141,15 +160,20 @@ def create_app(
     verifier: TokenVerifier | None = None,
     manager: CampaignManager | None = None,
     origins: list[str] | None = None,
+    queue=None,
 ) -> FastAPI:
     settings = settings or settings_service
-    supabase_url = os.getenv("SUPABASE_URL", "")
-    publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+    # Configuration is resolved through worker.config so the accepted variable
+    # names (and the "is this really set?" rule) are identical everywhere. The
+    # environment is read at app-construction time, so a changed value needs a
+    # worker restart — which the health/status payloads make obvious.
+    supabase_url = config.supabase_url()
+    publishable_key = config.supabase_publishable_key()
 
     if rest_factory is None:  # pragma: no cover - trivial wiring
         rest_factory = lambda token: SupabaseRest(supabase_url, publishable_key, token)
     if verifier is None:
-        verifier = TokenVerifier(supabase_url, publishable_key)
+        verifier = TokenVerifier()  # reads worker.config
     if service is None:
         service = CampaignManager(settings, rest_factory)
     if manager is None:
@@ -182,16 +206,102 @@ def create_app(
         header = request.headers.get("authorization", "")
         return header[7:].strip() if header.lower().startswith("bearer ") else ""
 
+    # -- queue / consumer availability ------------------------------------
+    #
+    # Availability is read from the heartbeat rows the consumer writes, so it
+    # reflects the real remote worker rather than an optimistic guess. The
+    # result is cached briefly so the unauthenticated health probe stays cheap.
+
+    heartbeat_cache: dict[str, Any] = {"at": 0.0, "value": None}
+
+    def queue_client():
+        if queue is not None:
+            return queue
+        if not queue_configured():
+            return None
+        try:
+            return WorkerQueue()
+        except QueueError:
+            return None
+
+    def consumer_availability() -> dict[str, Any]:
+        import time as _time
+
+        now = _time.monotonic()
+        cached = heartbeat_cache.get("value")
+        if cached is not None and now - heartbeat_cache["at"] < _HEARTBEAT_CACHE_SECONDS:
+            return cached
+
+        if not queue_configured() and queue is None:
+            # No service-role key: this deployment cannot consume the queue.
+            value = {
+                "configured": False,
+                "consumer_online": False,
+                "last_seen_at": None,
+                "workers": [],
+                "queued": 0,
+                "running": 0,
+                "detail": "SUPABASE_SERVICE_ROLE_KEY is not set on the worker host.",
+            }
+        else:
+            client = queue_client()
+            value = {
+                "configured": True,
+                "consumer_online": False,
+                "last_seen_at": None,
+                "workers": [],
+                "queued": 0,
+                "running": 0,
+                "detail": "",
+            }
+            try:
+                beats = client.heartbeats(within_seconds=HEARTBEAT_FRESH_SECONDS)
+                value["workers"] = [str(b.get("worker_id", "")) for b in beats]
+                value["last_seen_at"] = beats[0].get("last_seen_at") if beats else None
+                value["consumer_online"] = bool(beats)
+                value["queued"] = client.queued_count()
+                value["running"] = client.running_count()
+                if not beats:
+                    value["detail"] = (
+                        "No send worker has reported in the last "
+                        f"{HEARTBEAT_FRESH_SECONDS}s. Start the worker service, or check its logs."
+                    )
+            except QueueError as exc:
+                value["detail"] = str(exc)
+
+        heartbeat_cache["at"] = now
+        heartbeat_cache["value"] = value
+        return value
+
     # -- health ----------------------------------------------------------
 
     @app.get("/api/worker/health")
     def health() -> dict[str, Any]:
+        availability = consumer_availability()
+        # Secret-free configuration diagnostics. They name the variables that
+        # must be set and where — the information that was missing when the
+        # "not configured" error was the only clue an operator had.
+        diagnostics = config.diagnose()
         return {
             "ok": True,
             "app": "Seed Code Mail send worker",
             "version": VERSION,
-            "supabase_configured": bool(supabase_url and publishable_key),
+            "supabase_configured": diagnostics["auth_configured"],
+            # True only when this worker can verify a signed-in user's token.
+            "auth_configured": diagnostics["auth_configured"],
             "smtp_configured": settings.has_password and bool(settings.get("Email", "")),
+            # Booleans only: this endpoint is unauthenticated.
+            "queue_consumer_configured": bool(availability["configured"]),
+            "queue_consumer_online": bool(availability["consumer_online"]),
+            # Which of the two roles this process can actually perform. Reading
+            # and sending ordinary mail does not depend on either of these;
+            # campaign delivery needs the queue consumer.
+            "capabilities": {
+                "verify_users": diagnostics["auth_configured"],
+                "campaign_queue": diagnostics["queue_configured"],
+                "gmail_api": diagnostics["gmail_api_configured"],
+            },
+            "configuration_problems": diagnostics["problems"],
         }
 
     # -- status ----------------------------------------------------------
@@ -209,8 +319,14 @@ def create_app(
             "sending": bool(active),
             "active_campaign_id": active.get("campaign_id") if active else None,
             "current_recipient": active.get("current_recipient") if active else None,
+            # Real queue availability for the signed-in user.
+            "queue": consumer_availability(),
             "version": VERSION,
         }
+
+    @app.get("/api/worker/queue/status")
+    def queue_status(_user: dict = Depends(require_user)) -> dict[str, Any]:
+        return {"ok": True, **consumer_availability()}
 
     # -- settings --------------------------------------------------------
 
@@ -294,17 +410,79 @@ def create_app(
 app = create_app()
 
 
+def start_queue_consumer_thread() -> threading.Thread | None:
+    """Runs the durable queue consumer inside this process, when configured.
+
+    One deployment then serves the API *and* sends queued campaigns. Set
+    WORKER_QUEUE_CONSUMER=0 to run the API alone (for example when the consumer
+    runs as a separate service/process).
+    """
+    if os.getenv("WORKER_QUEUE_CONSUMER", "1").strip() in ("0", "false", "no"):
+        print("  Queue consumer: disabled by WORKER_QUEUE_CONSUMER")
+        return None
+    if not queue_configured():
+        print("  Queue consumer: not configured (SUPABASE_SERVICE_ROLE_KEY missing)")
+        print("  Campaigns cannot be sent until it is set. See README → Deploying the send worker.")
+        return None
+
+    from worker.queue_worker import build_consumer
+
+    try:
+        consumer = build_consumer()
+    except QueueError as exc:  # pragma: no cover - configuration guard
+        print(f"  Queue consumer: {exc}")
+        return None
+
+    thread = threading.Thread(target=consumer.run_forever, name="queue-consumer", daemon=True)
+    thread.start()
+    print(f"  Queue consumer: running as {consumer.worker_id}")
+    return thread
+
+
+def print_configuration() -> None:
+    """Show, at startup, exactly which roles this process can perform.
+
+    The original failure mode was silent: the worker started fine and only said
+    something when a request arrived. Printing it here means a misconfigured
+    worker host is obvious from its logs. No value is ever printed.
+    """
+    diagnostics = config.diagnose()
+    mark = lambda ok: "ok  " if ok else "MISSING"  # noqa: E731 - terse by design
+    print("  Configuration (from this process's environment):")
+    print(f"    [{mark(diagnostics['supabase_url_set'])}] SUPABASE_URL")
+    print(f"    [{mark(diagnostics['supabase_publishable_key_set'])}] SUPABASE_PUBLISHABLE_KEY")
+    print(f"    [{mark(diagnostics['supabase_service_role_key_set'])}] SUPABASE_SERVICE_ROLE_KEY")
+    print(
+        "  Capabilities: "
+        f"verify_users={diagnostics['auth_configured']}, "
+        f"campaign_queue={diagnostics['queue_configured']}, "
+        f"gmail_api={diagnostics['gmail_api_configured']}"
+    )
+    for problem in diagnostics["problems"]:
+        print(f"  ! {problem}")
+    if not diagnostics["auth_configured"]:
+        print(
+            "  ! Signed-in requests will be rejected with HTTP 401 until "
+            "SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are set here."
+        )
+
+
 def run() -> None:
     import uvicorn
 
+    # Local runs stay on the loopback interface; a hosted deployment sets
+    # WORKER_HOST=0.0.0.0 explicitly (see README → Deploying the send worker).
     host = os.getenv("WORKER_HOST", "127.0.0.1")
     port = int(os.getenv("WORKER_PORT", "8765") or "8765")
-    print("=" * 62)
+    public = host not in ("127.0.0.1", "localhost")
+    print("=" * 66)
     print("  Seed Code Mail — send worker")
-    print(f"  Listening on http://{host}:{port}  (this machine only)")
-    print("  Emails are sent from here; the website only queues them.")
+    print(f"  Listening on http://{host}:{port}" + ("  (reachable from the deployed site)" if public else "  (this machine only)"))
+    print("  Campaign email is sent from here; the website only queues campaigns.")
+    print_configuration()
     print("  Press Ctrl+C to stop.")
-    print("=" * 62)
+    print("=" * 66)
+    start_queue_consumer_thread()
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 

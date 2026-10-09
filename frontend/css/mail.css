@@ -1,0 +1,439 @@
+/* Seed Code Mail — Gmail workspace styles
+   ---------------------------------------------------------------------------
+   Kept in its own file so the existing aesthetic (frontend/css/style.css,
+   components.css) is untouched. Everything here uses the same variables and the
+   same minimalist black-and-white identity. */
+
+/* --- sidebar group dividers ---------------------------------------------- */
+
+.nav-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 12px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.nav-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.is-collapsed .nav-divider {
+  margin: 10px 8px;
+}
+
+.is-collapsed .nav-divider span {
+  display: none;
+}
+
+/* --- mailbox status strip ------------------------------------------------- */
+
+.mailbox-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--white);
+  font-size: 13px;
+}
+
+.mailbox-strip .grow { flex: 1; }
+
+/* --- search toolbar ------------------------------------------------------- */
+
+.mail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-field i {
+  position: absolute;
+  left: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.search-field .input {
+  padding-left: 34px;
+}
+
+/* --- message list -------------------------------------------------------- */
+
+.mail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--white);
+}
+
+.mail-row + .mail-row {
+  border-top: 1px solid var(--border);
+}
+
+.mail-row.is-unread {
+  background: #FAFAFA;
+}
+
+.mail-open {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) minmax(140px, 1.1fr) minmax(0, 1.6fr) auto 10px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mail-open:hover,
+.mail-open:focus-visible {
+  background: var(--page-bg);
+  outline: none;
+}
+
+.mail-who {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-subject {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-row.is-unread .mail-who,
+.mail-row.is-unread .mail-subject {
+  font-weight: 600;
+}
+
+.mail-snippet,
+.mail-date {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-date { text-align: right; }
+
+.mail-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--black);
+}
+
+.mail-empty-slot {
+  list-style: none;
+}
+
+.mail-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+@media (max-width: 760px) {
+  .mail-open {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "who date"
+      "subject subject"
+      "snippet snippet";
+    gap: 4px 10px;
+  }
+  .mail-who { grid-area: who; }
+  .mail-date { grid-area: date; }
+  .mail-subject { grid-area: subject; }
+  .mail-snippet { grid-area: snippet; }
+  .mail-unread-dot { display: none; }
+}
+
+/* --- reader --------------------------------------------------------------- */
+
+.reader-meta {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.reader-row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.reader-label {
+  min-width: 46px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.reader-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.reader-frame {
+  width: 100%;
+  min-height: 360px;
+  height: 52vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.reader-plain {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.reader-plain summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.reader-plain pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  margin: 10px 0 0;
+}
+
+/* --- attachments ---------------------------------------------------------- */
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.attachment,
+.attachment.readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+button.attachment { cursor: pointer; font: inherit; }
+button.attachment:hover { background: var(--page-bg); }
+
+.attachment-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- compose -------------------------------------------------------------- */
+
+.compose-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(240px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1020px) {
+  .compose-grid { grid-template-columns: 1fr; }
+}
+
+.compose-card { padding: 20px; }
+
+.compose-recipients {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#ccbcc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.compose-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+}
+
+.inline-field {
+  margin: 0;
+  min-width: 200px;
+  flex: 1;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.seg-btn {
+  border: 0;
+  background: var(--white);
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.seg-btn.is-active { background: var(--black); color: var(--white); }
+
+.compose-body {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 240px;
+  resize: vertical;
+}
+
+.compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.compose-actions .grow { flex: 1; }
+
+.compose-side { padding: 20px; }
+
+/* --- setup / connection cards -------------------------------------------- */
+
+.setup-card { padding: 20px; }
+.setup-card p { font-size: 13.5px; line-height: 1.65; }
+
+.setup-list {
+  margin: 8px 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.setup-list li { margin-bottom: 4px; }
+
+.scope-list {
+  list-style: none;
+  margin: 6px 0 12px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.scope-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--muted);
+}
+
+.scope-list li i { color: var(--success); }
+
+.profile-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* --- about ---------------------------------------------------------------- */
+
+.capability-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.capability {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.capability:last-child { border-bottom: 0; }
+
+.capability-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.capability strong { display: block; font-size: 13.5px; }
+.capability p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+.capability-state {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Reduced motion: the existing stylesheet disables transitions globally, and
+   the mail views add no animation that needs its own override. */

@@ -338,6 +338,46 @@ export function displayName() {
   );
 }
 
+/** When the account was created, if the session exposes it. */
+export function accountCreatedAt() {
+  return currentSession?.user?.created_at || currentProfile?.created_at || '';
+}
+
+/**
+ * Updates the display name in the user's auth metadata.
+ *
+ * The `profiles` row is the application's copy (written by the caller through
+ * RLS); this is the auth-side copy, so the name is already present on a fresh
+ * device before the profile row has loaded. It is not a credential and is not
+ * used for authorization anywhere.
+ */
+export async function updateDisplayName(name) {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const clean = String(name ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const { error } = await supabase.auth.updateUser({ data: { display_name: clean } });
+  if (error) throw new Error(friendlyAuthError(error));
+  if (currentProfile) currentProfile.display_name = clean;
+  else currentProfile = { id: currentSession?.user?.id || '', display_name: clean, created_at: null };
+  notify('profile', currentSession);
+  return clean;
+}
+
+/**
+ * Requests an email-address change.
+ *
+ * Supabase owns the confirmation flow: it emails the new address (and, by
+ * project configuration, notifies the old one) and only applies the change once
+ * the link is followed. No part of that is reimplemented here.
+ */
+export async function requestEmailChange(email) {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const next = String(email ?? '').trim();
+  if (!isValidEmail(next)) throw new Error('Enter a valid email address.');
+  const { error } = await supabase.auth.updateUser({ email: next });
+  if (error) throw new Error(friendlyAuthError(error));
+  return next;
+}
+
 // --- signed-out screens ----------------------------------------------------
 
 const ROUTE_COPY = {

@@ -7,6 +7,33 @@ import { refreshTopbar } from './app.js';
 let host = null;
 let snapshot = null;
 
+/**
+ * A one-line, accurate description of the send worker's state.
+ *
+ * It never tells an end user of a hosted deployment to run Python locally, and
+ * it never claims the worker is online unless it has actually reported in.
+ */
+function workerStatusLine(worker) {
+  const configured = worker.configured !== false;
+  const available = Boolean(worker.available);
+  const queue = worker.queue || null;
+  const queueOnline = queue ? Boolean(queue.consumer_online) : available;
+  const waiting = Number(queue?.queued || 0);
+
+  if (!configured) {
+    return 'No send worker is configured for this deployment, so campaigns stay queued. Set VITE_MAIL_WORKER_URL to the worker service URL and redeploy.';
+  }
+  if (!available) {
+    return worker.local
+      ? 'Cannot reach the send worker. For local development, start it with "python worker/main.py".'
+      : 'The send worker service is not reachable right now. Campaigns stay queued and are delivered automatically when it returns.';
+  }
+  if (!queueOnline) {
+    return `The send worker is starting up.${waiting ? ` ${waiting} campaign(s) are waiting in the queue.` : ''}`;
+  }
+  return `Send worker online — campaigns are queued here and delivered by the worker service.${waiting ? ` ${waiting} waiting in the queue.` : ''}`;
+}
+
 function field(id, label, value, { type = 'text', hint = '', wide = false } = {}) {
   return `<div class="field" style="${wide ? 'grid-column:1 / -1;' : ''}">
     <label for="${id}">${escapeHtml(label)}</label>
@@ -20,12 +47,12 @@ function paint(data) {
 
   const notice = host.querySelector('#worker-notice');
   if (notice) {
-    const available = Boolean(data.worker?.available);
-    notice.innerHTML = `<div class="notice ${available ? 'notice-success' : 'notice-warning'}">
-      ${icon(available ? 'check-circle-2' : 'alert-circle', 16)}
-      <span>${available
-        ? 'Send worker reachable. Emails are sent by this worker, not by the hosted website.'
-        : `Send worker not running — campaigns cannot be started and the App Password cannot be saved. Start it with "python worker/main.py". ${escapeHtml(data.worker?.error || '')}`}</span></div>`;
+    const worker = data.worker || {};
+    const online = Boolean(worker.available) && Boolean(worker.queue?.consumer_online);
+    const unavailable = workerStatusLine(worker);
+    notice.innerHTML = `<div class="notice ${online ? 'notice-success' : 'notice-warning'}">
+      ${icon(online ? 'check-circle-2' : 'alert-circle', 16)}
+      <span>${escapeHtml(unavailable)}</span></div>`;
   }
 
   host.querySelector('#settings-form').innerHTML = `
@@ -35,8 +62,8 @@ function paint(data) {
         ${field('s-email', 'Sender Gmail address', data.email, { type: 'email', hint: 'The Gmail account that sends the emails (Email in .env).' })}
         ${field('s-name', 'Sender display name', v.SENDER_NAME)}
         ${field('s-github', 'GitHub URL (optional)', v.GITHUB_URL, { hint: 'Used by the {{GITHUB_URL}} template variable. Leave blank if unused.', wide: true })}
-        ${field('s-pass', 'Gmail App Password', '', { type: 'password', hint: data.has_password ? 'An App Password is configured on the send worker. Leave blank to keep it unchanged.' : 'No password configured yet. Paste your 16-character Gmail App Password — it is sent only to the local worker.', wide: true })}
-        <div class="kv"><span>Send worker</span><span>${data.worker?.available ? 'Running' : 'Not running'}</span></div>
+        ${field('s-pass', 'Gmail App Password', '', { type: 'password', hint: data.has_password ? 'An App Password is configured on the send worker. Leave blank to keep it unchanged.' : 'No password configured yet. Paste your 16-character Gmail App Password — it is sent only to the worker service, never stored in the browser or the database.', wide: true })}
+        <div class="kv"><span>Send worker</span><span>${data.worker?.available ? (data.worker?.queue?.consumer_online ? 'Online' : 'Starting') : 'Not reachable'}</span></div>
       </div>
 
       <div class="card">
@@ -94,6 +121,10 @@ export async function render(container) {
         <button class="btn btn-primary" id="btn-save">${icon('save', 16)} Save settings</button>
       </div>
     </div>
+    <div class="notice" style="margin-bottom:20px;">${icon('info', 16)}
+      <span>This page configures <strong>campaign delivery</strong>, which uses Gmail SMTP with an App Password.
+      Reading your Inbox and sending ordinary email works differently — it uses Google's Gmail API with OAuth 2.0,
+      and is set up on the <a href="#/profile">Profile</a> page. A Gmail App Password does not grant Gmail API access.</span></div>
     <div class="notice" style="margin-bottom:20px;">${icon('shield', 16)}
       <span>The App Password is never sent back to the browser, never stored in Supabase, and never saved in localStorage or IndexedDB. It is written to the send worker's own environment on your machine.</span></div>
     <div id="worker-notice" style="margin-bottom:20px;"></div>

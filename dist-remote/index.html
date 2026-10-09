@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- SEO ---------------------------------------------------------------- -->
+  <title>Seed Code Mail — Secure Email Campaign Management</title>
+  <meta name="description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <link rel="canonical" href="https://mrseedmail.vercel.app/">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#111111">
+  <meta name="color-scheme" content="light">
+  <meta name="author" content="Seed Code Mail">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Seed Code Mail">
+  <meta property="og:url" content="https://mrseedmail.vercel.app/">
+  <meta property="og:title" content="Seed Code Mail — Secure Email Campaign Management">
+  <meta property="og:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta property="og:image" content="https://mrseedmail.vercel.app/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Seed Code Mail — secure email campaign management">
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Seed Code Mail — Secure Email Campaign Management">
+  <meta name="twitter:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta name="twitter:image" content="https://mrseedmail.vercel.app/og-image.png">
+
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+
+  <!-- Structured data: only truthful, verifiable facts about the product.
+       No ratings, reviews or organisation claims are invented. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Seed Code Mail",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "url": "https://mrseedmail.vercel.app/",
+    "description": "Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <script type="module" crossorigin src="/assets/index-ChX2v3XJ.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BbfL5Vd7.css">
+</head>
+<body>
+  <!-- Only meaningful once the application shell is visible (it is the element
+       that lets a keyboard user bypass the sidebar navigation). js/app.js
+       reveals it when a session exists, so it is never a dead link on the
+       public landing view. -->
+  <a class="skip-link" id="skip-link" href="#main-content" hidden>Skip to content</a>
+
+  <!-- Signed-out view. This markup is served as static HTML so search engines
+       see real content without executing JavaScript. The private application
+       shell below stays hidden until Supabase confirms a session, and its
+       routes are marked noindex at runtime.
+
+       The auth panel starts with a loading state so nothing from the signed-in
+       application can paint before authentication is resolved; js/auth.js
+       replaces it as soon as the session check finishes. -->
+  <div class="auth-layout" id="auth-root">
+    <main class="auth-shell">
+      <header class="auth-brand">
+        <div class="brand-mark brand-mark-lg"><i data-lucide="mail" data-size="24"></i></div>
+        <h1 class="auth-brand-name">Seed Code Mail</h1>
+        <p class="auth-tagline">Secure Email Campaign Management</p>
+        <p class="auth-lede">
+          Sign in to manage recipients, craft custom HTML email templates and run
+          personalised campaigns with real progress, retry control and a complete
+          submission history.
+        </p>
+      </header>
+
+      <section class="auth-panel" id="auth-panel" aria-live="polite" tabindex="-1">
+        <div class="auth-card">
+          <div class="loading-inline"><span class="spinner"></span><span>Checking your session…</span></div>
+        </div>
+      </section>
+
+      <p class="auth-footnote">
+        Signed-in features require an account. Email templates are stored in this
+        browser; when you queue a campaign, that template is saved to your own account
+        row (protected by row level security) so the send worker can deliver it.
+      </p>
+    </main>
+  </div>
+
+  <noscript>
+    <div class="noscript-notice">
+      Seed Code Mail requires JavaScript to run campaigns and manage recipients.
+      Please enable JavaScript to sign in.
+    </div>
+  </noscript>
+
+  <div class="app-shell" id="app-shell" hidden>
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar-head">
+        <div class="brand">
+          <div class="brand-mark"><i data-lucide="mail" data-size="20"></i></div>
+          <div class="brand-text">
+            <span class="brand-name">Seed Code Mail</span>
+            <span class="brand-sub">Acquisition Outreach</span>
+          </div>
+        </div>
+        <div class="sidebar-controls">
+          <button class="icon-btn sidebar-toggle" id="sidebar-toggle" type="button"
+            aria-controls="sidebar" aria-expanded="true"
+            aria-label="Collapse sidebar" title="Collapse sidebar">
+            <i data-lucide="panel-left-close" data-size="18"></i>
+          </button>
+          <button class="icon-btn sidebar-close" id="nav-close" type="button"
+            aria-label="Close navigation" title="Close navigation">
+            <i data-lucide="x" data-size="18"></i>
+          </button>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <a class="nav-item" href="#/dashboard" data-route="dashboard"><i data-lucide="layout-dashboard" data-size="18"></i><span>Dashboard</span></a>
+        <a class="nav-item" href="#/recipients" data-route="recipients"><i data-lucide="users" data-size="18"></i><span>Recipients</span></a>
+        <a class="nav-item" href="#/campaigns" data-route="campaigns"><i data-lucide="send" data-size="18"></i><span>Campaigns</span></a>
+        <a class="nav-item" href="#/templates" data-route="templates"><i data-lucide="layout-template" data-size="18"></i><span>Email Templates</span></a>
+        <a class="nav-item" href="#/editor" data-route="editor"><i data-lucide="code" data-size="18"></i><span>Email Editor</span></a>
+        <a class="nav-item" href="#/history" data-route="history"><i data-lucide="history" data-size="18"></i><span>Email History</span></a>
+        <a class="nav-item" href="#/settings" data-route="settings"><i data-lucide="settings" data-size="18"></i><span>Settings</span></a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="status-led" id="sidebar-led"></span>
+        <span class="sidebar-status-text" id="sidebar-status">Checking sync…</span>
+      </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebar-scrim"></div>
+
+    <div class="main" id="main-content" tabindex="-1">
+      <header class="topbar">
+        <button class="icon-btn menu-toggle" id="menu-toggle" type="button"
+          aria-controls="sidebar" aria-expanded="false" aria-label="Open navigation"><i data-lucide="menu" data-size="20"></i></button>
+        <div class="topbar-title">
+          <h1 id="section-title">Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="smtp-indicator" id="smtp-indicator" title="Send worker and SMTP status">
+            <span class="status-led"></span><span class="smtp-label">Worker</span>
+          </button>
+          <button class="icon-btn" id="settings-shortcut" aria-label="Open settings" title="Settings"><i data-lucide="settings-2" data-size="18"></i></button>
+          <div class="profile-chip" id="profile-chip" title="Signed-in account">
+            <span class="avatar" id="profile-avatar">?</span>
+            <span class="profile-meta">
+              <span class="profile-name" id="profile-name">—</span>
+              <span class="profile-email" id="profile-email">—</span>
+            </span>
+          </div>
+          <button class="icon-btn" id="signout" aria-label="Sign out" title="Sign out"><i data-lucide="log-out" data-size="18"></i></button>
+        </div>
+      </header>
+
+      <main class="view" id="view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</body>
+</html>

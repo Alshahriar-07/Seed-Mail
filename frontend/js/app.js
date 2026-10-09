@@ -9,23 +9,38 @@ import {
   currentUser, displayName, signOut, isRecoveryPending,
   renderAuthLoading, renderAuthInitFailure,
 } from './auth.js';
+import * as inbox from './inbox.js';
+import * as compose from './compose.js';
+import * as sent from './sent.js';
 import * as dashboard from './dashboard.js';
 import * as recipients from './recipients.js';
 import * as campaigns from './campaigns.js';
 import * as templates from './templates.js';
 import * as editor from './email-editor.js';
 import * as history from './history.js';
+import * as profile from './profile.js';
 import * as settings from './settings.js';
+import * as about from './about.js';
 
+// The mailbox pages come first: reading and sending ordinary mail is the
+// primary job now, and campaigns are the workspace's bulk tool.
 const routes = {
+  inbox: { title: 'Inbox', module: inbox },
+  compose: { title: 'Compose Email', module: compose },
+  sent: { title: 'Sent', module: sent },
   dashboard: { title: 'Dashboard', module: dashboard },
   recipients: { title: 'Recipients', module: recipients },
   campaigns: { title: 'Campaigns', module: campaigns },
   templates: { title: 'Email Templates', module: templates },
   editor: { title: 'Email Editor', module: editor },
   history: { title: 'Email History', module: history },
+  profile: { title: 'Profile', module: profile },
   settings: { title: 'Settings', module: settings },
+  about: { title: 'About', module: about },
 };
+
+// Where a signed-in user lands when no route is present in the URL.
+const DEFAULT_ROUTE = 'inbox';
 
 const PRIVATE_ROUTES = Object.keys(routes);
 
@@ -80,7 +95,7 @@ function setAuthView(next) {
 
 let dirtyGuard = null;
 let guardSuppressed = false;
-let lastHash = location.hash || '#/dashboard';
+let lastHash = location.hash || '#/inbox';
 
 export function setDirtyGuard(predicate) {
   dirtyGuard = typeof predicate === 'function' ? predicate : null;
@@ -215,19 +230,38 @@ export async function refreshTopbar() {
 
   try {
     const worker = await api.workerStatus();
-    const ready = Boolean(worker.available && worker.has_password);
+    // "Ready" means the API answered *and* the durable queue consumer has
+    // reported in recently *and* an App Password exists. Any other combination
+    // is reported honestly rather than as a generic failure.
+    const consumer = worker.queue;
+    const consumerOnline = consumer ? Boolean(consumer.consumer_online) : true;
+    const ready = Boolean(worker.available && worker.has_password && consumerOnline);
+    const starting = Boolean(worker.available && worker.has_password && consumer && consumer.configured && !consumerOnline);
+    const state = !worker.available ? 'offline' : (ready ? 'ready' : (starting ? 'starting' : 'password'));
+    const labelText = {
+      ready: 'Send worker ready',
+      starting: 'Send worker starting',
+      password: 'App Password needed',
+      offline: worker.configured === false ? 'Worker not configured' : 'Worker unreachable',
+    }[state];
+
     indicator?.classList.toggle('is-ok', ready);
-    indicator?.classList.toggle('is-off', !ready);
-    if (label) label.textContent = ready ? 'Send worker ready' : (worker.available ? 'App Password needed' : 'Worker offline');
-    if (led) led.className = 'status-led ' + (ready ? 'is-ok' : 'is-off');
+    indicator?.classList.toggle('is-off', state === 'offline' || state === 'password');
+    if (label) label.textContent = labelText;
+    if (led) led.className = 'status-led ' + (ready ? 'is-ok' : state === 'starting' ? '' : 'is-off');
     if (status) {
-      status.textContent = worker.available
-        ? (ready ? 'Send worker ready' : 'Send worker: App Password missing')
-        : 'Send worker not running';
+      status.textContent = {
+        ready: 'Send worker ready',
+        starting: 'Send worker starting — campaigns wait in the queue',
+        password: 'Send worker: Gmail App Password missing',
+        offline: state === 'offline' && worker.configured === false
+          ? 'Send worker not configured for this deployment'
+          : 'Send worker unreachable — queued campaigns will send when it returns',
+      }[state];
     }
   } catch (_) {
     if (led) led.className = 'status-led is-off';
-    if (status) status.textContent = 'Send worker not running';
+    if (status) status.textContent = 'Send worker status unavailable';
   }
 }
 
@@ -259,11 +293,11 @@ async function onHashChange() {
 }
 
 async function renderAppRoute() {
-  const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
+  const hash = location.hash.replace(/^#\/?/, '') || DEFAULT_ROUTE;
   const [name, ...params] = hash.split('/');
   if (!PRIVATE_ROUTES.includes(name)) {
     guardSuppressed = true;
-    location.hash = '#/dashboard';
+    location.hash = `#/${DEFAULT_ROUTE}`;
     return;
   }
   const route = routes[name];
@@ -276,6 +310,10 @@ async function renderAppRoute() {
   });
   titleEl.textContent = route.title;
   document.title = `${route.title} · Seed Code Mail`;
+  // Dismiss the mobile drawer as soon as the navigation is committed. Waiting
+  // for the view to finish rendering would leave it open on a slow request
+  // (Supabase data calls retry with backoff before they fail).
+  closeSidebar();
 
   if (typeof cleanup === 'function') {
     try { cleanup(); } catch (_) { /* ignore */ }
@@ -301,7 +339,6 @@ async function renderAppRoute() {
   }
   refreshIcons(document);
   view.focus({ preventScroll: true });
-  closeSidebar();
 }
 
 // --- Sidebar: mobile drawer ------------------------------------------------
@@ -317,8 +354,14 @@ function openSidebar() {
     menuToggle.setAttribute('aria-expanded', 'true');
     menuToggle.setAttribute('aria-label', 'Close navigation');
   }
-  // Move focus into the drawer so keyboard users are not left behind it.
-  if (navClose) navClose.focus({ preventScroll: true });
+  // Move focus into the drawer so keyboard users are not left behind it. The
+  // focus must wait a frame: the drawer's `visibility` only becomes `visible`
+  // once the transition starts, and focus() is ignored in a hidden subtree.
+  if (navClose) {
+    requestAnimationFrame(() => {
+      if (drawerIsOpen()) navClose.focus({ preventScroll: true });
+    });
+  }
 }
 
 function closeSidebar({ restoreFocus = false } = {}) {
@@ -395,7 +438,9 @@ sidebarToggle?.addEventListener('click', () => {
 
 document.getElementById('settings-shortcut').addEventListener('click', () => navigate('settings'));
 document.getElementById('smtp-indicator').addEventListener('click', () => navigate('settings'));
-document.getElementById('profile-chip').addEventListener('click', () => navigate('settings'));
+// The account chip opens the Profile page, which is where the account and the
+// Gmail connection are managed; Settings remains for sending preferences.
+document.getElementById('profile-chip').addEventListener('click', () => navigate('profile'));
 
 document.getElementById('signout').addEventListener('click', async () => {
   const ok = await confirmDialog('Sign out of Seed Code Mail?', { title: 'Sign out', confirmLabel: 'Sign out' });
@@ -438,7 +483,7 @@ async function applyAuthState() {
   await refreshTopbar();
   if (!location.hash || !PRIVATE_ROUTES.includes(location.hash.replace(/^#\/?/, '').split('/')[0])) {
     guardSuppressed = true;
-    location.hash = '#/dashboard';
+    location.hash = `#/${DEFAULT_ROUTE}`;
   }
   lastHash = location.hash;
   await renderAppRoute();

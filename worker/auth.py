@@ -17,6 +17,8 @@ from typing import Any
 
 import httpx
 
+from worker import config
+
 CACHE_TTL_SECONDS = 60.0
 
 
@@ -24,10 +26,44 @@ class AuthError(RuntimeError):
     """Raised when a request cannot be attributed to a verified user."""
 
 
+def configuration_error() -> str:
+    """A precise 401 message naming the variable(s) that are actually missing.
+
+    The old message was a single generic sentence, which was why the failure was
+    hard to diagnose: it never said *which* of the two variables was absent, and
+    it did not warn that a `VITE_`-prefixed value is not read here.
+    """
+    diagnostic = config.diagnose()
+    missing = []
+    if not diagnostic["supabase_url_set"]:
+        missing.append("SUPABASE_URL")
+    if not diagnostic["supabase_publishable_key_set"]:
+        missing.append("SUPABASE_PUBLISHABLE_KEY (or SUPABASE_ANON_KEY)")
+    listed = " and ".join(missing) or "SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY"
+    return (
+        f"The worker cannot verify signed-in users because {listed} is not set in "
+        "the worker's own environment. Set it in the worker host's environment "
+        "variables (or in .env when running locally), then restart the worker. "
+        "Do not use a VITE_-prefixed value here."
+    )
+
+
 class TokenVerifier:
-    def __init__(self, supabase_url: str, publishable_key: str, timeout: float = 15.0) -> None:
-        self._url = (supabase_url or "").rstrip("/")
-        self._key = publishable_key or ""
+    def __init__(
+        self,
+        supabase_url: str | None = None,
+        publishable_key: str | None = None,
+        timeout: float = 15.0,
+    ) -> None:
+        # Default to the process environment (through worker.config) so callers
+        # never have to remember which name to read. An explicit value still
+        # wins, which keeps the tests able to inject a fake project.
+        resolved_url = supabase_url if supabase_url is not None else config.supabase_url()
+        resolved_key = (
+            publishable_key if publishable_key is not None else config.supabase_publishable_key()
+        )
+        self._url = (resolved_url or "").rstrip("/")
+        self._key = resolved_key or ""
         self._timeout = timeout
         self._lock = threading.Lock()
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -41,10 +77,7 @@ class TokenVerifier:
         if not token:
             raise AuthError("Missing access token.")
         if not self.configured:
-            raise AuthError(
-                "The worker is not configured with SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY, "
-                "so it cannot verify signed-in users."
-            )
+            raise AuthError(configuration_error())
 
         now = time.monotonic()
         with self._lock:

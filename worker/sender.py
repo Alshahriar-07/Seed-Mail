@@ -18,8 +18,15 @@ The runner keeps the safety guarantees of the original local application:
   delivery;
 * nothing is sent on startup, and pause/cancel are honoured between attempts.
 
-Progress is written with the user's own access token, so Row Level Security
-applies and no service-role key is needed anywhere.
+There are two ways this runner is driven:
+
+* ``POST /api/worker/campaigns/start`` (the local/legacy path) passes the
+  signed-in user's token, so progress is written under their RLS identity;
+* ``worker.queue_worker`` (the production path) claims a queued campaign with
+  the service-role key and passes ``owner_id`` so every row it writes is still
+  attributed to the campaign's owner.
+
+Either way the worker host is the only place a credential lives.
 """
 
 from __future__ import annotations
@@ -62,8 +69,12 @@ def _sanitize(message: Any) -> str:
 class RunState:
     """Live control + counters for one campaign run."""
 
-    def __init__(self, campaign_id: str, counters: dict[str, int]) -> None:
+    def __init__(self, campaign_id: str, counters: dict[str, int], owner_id: str = "") -> None:
         self.campaign_id = campaign_id
+        # Owner of the campaign. Only set when the durable queue consumer runs a
+        # campaign: it writes with the service-role key, so there is no
+        # `auth.uid()` for the database to default `user_id` from.
+        self.owner_id = owner_id
         self.resume = threading.Event()
         self.resume.set()
         self.cancel = threading.Event()
@@ -108,12 +119,32 @@ class CampaignManager:
             state = self._runs.get(campaign_id)
         return state.snapshot() if state else None
 
+    def control(self, campaign_id: str) -> RunState | None:
+        """The live RunState for a run started by this process.
+
+        Used by the durable queue consumer to mirror the campaign's pause/cancel
+        flags onto a run that is already in progress.
+        """
+        with self._lock:
+            return self._runs.get(campaign_id)
+
     def active(self) -> dict[str, Any] | None:
         with self._lock:
             for state in self._runs.values():
                 if state.status == RUNNING:
                     return state.snapshot()
         return None
+
+    def is_active(self, campaign_id: str) -> bool:
+        """True while this process still has a live run thread for the campaign.
+
+        A paused run counts as active: its thread is alive and waiting for the
+        resume flag, so the queue consumer must keep watching it (and keep the
+        lease) rather than releasing the campaign.
+        """
+        with self._lock:
+            thread = self._threads.get(campaign_id)
+        return bool(thread and thread.is_alive())
 
     # -- control -----------------------------------------------------------
 
@@ -143,7 +174,7 @@ class CampaignManager:
                 state.status = RUNNING
                 return state.snapshot()
 
-            state = RunState(campaign_id, counters)
+            state = RunState(campaign_id, counters, owner_id=str(payload.get("owner_id") or ""))
             self._runs[campaign_id] = state
             thread = threading.Thread(
                 target=self._run,
@@ -331,6 +362,13 @@ class CampaignManager:
             state.counters["pending"] = max(0, state.counters.get("pending", 0) - 1)
             state.counters[status] = state.counters.get(status, 0) + 1
 
+        # Provider metadata: the channel that made the submission and the id it
+        # returned. SMTP returns no id, so this stays empty for campaign sends —
+        # which the UI shows as "submitted, id not reported" rather than
+        # inventing a message id it does not have.
+        provider = str(getattr(outcome, "provider", "") or "smtp")[:40]
+        provider_message_id = str(getattr(outcome, "provider_message_id", "") or "")[:200]
+
         def write(rest) -> None:
             if job_id:
                 rest.update(
@@ -342,22 +380,28 @@ class CampaignManager:
                         "last_error_category": outcome.category or "",
                         "last_error": _sanitize(outcome.message),
                         "last_attempt_at": _now(),
+                        "provider": provider,
+                        "provider_message_id": provider_message_id,
                     },
                 )
-            rest.insert(
-                "email_history",
-                {
-                    "campaign_id": state.campaign_id,
-                    "recipient_id": recipient_id,
-                    "company_name": company,
-                    "email": address,
-                    "subject": subject,
-                    "status": status,
-                    "attempt": attempts,
-                    "error_category": outcome.category or "",
-                    "error_message": _sanitize(outcome.message),
-                },
-            )
+            history: dict[str, Any] = {
+                "campaign_id": state.campaign_id,
+                "recipient_id": recipient_id,
+                "company_name": company,
+                "email": address,
+                "subject": subject,
+                "status": status,
+                "attempt": attempts,
+                "error_category": outcome.category or "",
+                "error_message": _sanitize(outcome.message),
+                "provider": provider,
+                "provider_message_id": provider_message_id,
+            }
+            if state.owner_id:
+                # Required when the durable consumer writes with the service
+                # role, where auth.uid() is NULL and cannot fill the default.
+                history["user_id"] = state.owner_id
+            rest.insert("email_history", history)
             if recipient_id:
                 rest.update(
                     "recipients",

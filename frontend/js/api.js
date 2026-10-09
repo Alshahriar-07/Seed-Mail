@@ -15,11 +15,15 @@
 import { requireClient } from './lib/supabase.js';
 import * as templates from './lib/templates-store.js';
 import { DEFAULT_DESIGN, VARIABLE_GUIDE, previewTemplate as renderPreview, isValidEmail, isValidUrl, cleanDesign } from './lib/render.js';
-import { worker, WorkerUnavailableError } from './lib/worker.js';
+import { worker, WorkerUnavailableError, workerConfigured, workerIsLocal, workerUnavailableHelp } from './lib/worker.js';
 import { currentUser } from './auth.js';
 import {
   download, recipientsCsv, recipientsJson, historyCsv, historyJson, templateFileName,
 } from './lib/exports.js';
+
+// Injected at build time from package.json (see vite.config.js). The guard keeps
+// the module valid if it is ever loaded outside a Vite build.
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
 
 const RECIPIENT_STATUSES = ['pending', 'sent', 'failed', 'unknown'];
 const ACTIVE_STATUSES = ['queued', 'running', 'paused'];
@@ -499,11 +503,17 @@ export async function getSettings() {
     const status = await worker.status();
     result.has_password = Boolean(status?.has_password);
     result.password_mask = result.has_password ? PASSWORD_MASK : '';
-    result.worker = { available: true, error: '' };
+    result.worker = { available: true, error: '', configured: workerConfigured(), local: workerIsLocal(), queue: status?.queue || null };
     if (status?.sender_email) result.email = status.sender_email;
     if (status?.sender_name) result.sender_name = status.sender_name;
   } catch (error) {
-    result.worker = { available: false, error: error.message };
+    result.worker = {
+      available: false,
+      error: error.message,
+      configured: workerConfigured(),
+      local: workerIsLocal(),
+      queue: null,
+    };
   }
   return result;
 }
@@ -554,8 +564,8 @@ export async function saveSettings(data) {
     } catch (error) {
       if (error instanceof WorkerUnavailableError) {
         throw new Error(
-          'Settings saved, but the Gmail App Password was NOT stored: the local send worker is not running. ' +
-          'Start it with "python worker/main.py", then save the password again.',
+          'Settings saved, but the Gmail App Password was NOT stored because the send worker ' +
+          `service could not be reached. ${workerUnavailableHelp()}`,
         );
       }
       throw error;
@@ -582,7 +592,7 @@ export async function testSmtp() {
       return {
         ok: false,
         category: 'worker',
-        message: 'The local send worker is not running, so SMTP cannot be tested. Start it with "python worker/main.py".',
+        message: `SMTP cannot be tested because the send worker service is unavailable. ${workerUnavailableHelp()}`,
       };
     }
     return { ok: false, category: 'worker', message: error.message };
@@ -592,9 +602,20 @@ export async function testSmtp() {
 export async function workerStatus() {
   try {
     const status = await worker.status();
-    return { available: true, ...status };
+    return { available: true, configured: workerConfigured(), local: workerIsLocal(), ...status };
   } catch (error) {
-    return { available: false, error: error.message, has_password: false, sending: false };
+    return {
+      available: false,
+      // Distinguishes "this deployment has no worker configured" from "the
+      // worker is configured but currently unreachable" — the UI says something
+      // different (and useful) in each case.
+      configured: workerConfigured(),
+      local: workerIsLocal(),
+      error: error.message,
+      has_password: false,
+      sending: false,
+      queue: { configured: workerConfigured(), consumer_online: false, queued: 0, running: 0, last_seen_at: null },
+    };
   }
 }
 
@@ -726,76 +747,110 @@ async function pendingJobPayload(campaign) {
   }));
 }
 
+/**
+ * The run snapshot the send worker needs, taken from the campaign's own
+ * (browser-local) template plus the account's sending preferences.
+ *
+ * It is written to the owner's `campaigns` row, which is protected by RLS, so
+ * the worker can send the campaign even when this browser is closed. Nothing
+ * secret is included: the Gmail App Password never leaves the worker host.
+ */
+async function runSnapshot(campaign) {
+  const template = await templates.get(campaign.template_id);
+  if (!template) throw new Error('The template for this campaign was not found in this browser.');
+  const settings = await loadSettingsRow();
+  return {
+    template_html: template.html || '',
+    template_design: template.design || {},
+    run_config: {
+      sender_name: settings.sender_display_name || '',
+      sender_email: settings.sender_email || '',
+      github_url: settings.github_url || '',
+      smtp_host: settings.smtp_host || '',
+      smtp_port: settings.smtp_port ?? null,
+      smtp_timeout_seconds: settings.smtp_timeout_seconds ?? null,
+      send_delay_seconds: settings.send_delay_seconds ?? null,
+      max_retries: settings.max_retries ?? null,
+      retry_delay_seconds: settings.retry_delay_seconds ?? null,
+    },
+  };
+}
+
+/**
+ * Queues a campaign for the send worker.
+ *
+ * This no longer requires a local Python process: the campaign (with its run
+ * snapshot) is stored in Supabase, a continuously available worker claims it and
+ * reports progress back into the same tables the UI already reads. If the worker
+ * is down the campaign simply waits in `queued` — the browser can be closed.
+ */
 export async function startCampaign(id) {
+  const client = requireClient();
   const campaign = await getCampaign(id);
   if (!ACTIVE_STATUSES.includes(campaign.status) && campaign.counters.pending === 0 && campaign.counters.processed > 0) {
     throw new Error('This campaign has already completed.');
   }
 
-  const template = await templates.get(campaign.template_id);
-  if (!template) throw new Error('The local template for this campaign was not found in this browser.');
-  const settings = await loadSettingsRow();
   const queue = await pendingJobPayload(campaign);
   if (!queue.length) throw new Error('There is nothing left to send in this campaign.');
+  const snapshot = await runSnapshot(campaign);
 
-  let state;
-  try {
-    state = await worker.startCampaign({
-      campaign_id: campaign.id,
-      name: campaign.name,
-      subject: campaign.subject,
-      sender_name: settings.sender_display_name || '',
-      sender_email: settings.sender_email || '',
-      github_url: settings.github_url || '',
-      // Sending preferences travel with the request; the worker never stores
-      // them (it only holds the App Password).
-      smtp_host: settings.smtp_host || '',
-      smtp_port: settings.smtp_port || null,
-      smtp_timeout_seconds: settings.smtp_timeout_seconds || null,
-      send_delay_seconds: settings.send_delay_seconds,
-      max_retries: settings.max_retries,
-      retry_delay_seconds: settings.retry_delay_seconds,
-      counters: campaign.counters,
-      // The local template document: sent to the worker for this run only and
-      // deliberately never stored in Postgres.
-      template_html: template.html || '',
-      template_design: template.design || {},
-      recipients: queue,
-    });
-  } catch (error) {
-    if (error instanceof WorkerUnavailableError) {
-      throw new Error(
-        'The local send worker is not running, so nothing was sent. Start it with "python worker/main.py" and try again.',
-      );
-    }
-    throw error;
-  }
+  const { error } = await client.from('campaigns').update({
+    status: 'queued',
+    queued_at: new Date().toISOString(),
+    finished_at: null,
+    // Fresh queue entry: clear the previous run's cooperative flags/errors.
+    pause_requested: false,
+    cancel_requested: false,
+    last_error: '',
+    ...snapshot,
+  }).eq('id', id);
+  if (error) throw fail(error, 'Could not queue the campaign.');
 
-  await setCampaignStatus(id, 'running', { started_at: campaign.started_at || new Date().toISOString() });
-  return { ...(await getCampaign(id)), worker: state };
+  return getCampaign(id);
 }
 
 export async function pauseCampaign(id) {
-  try {
-    await worker.pauseCampaign(id);
-  } catch (error) {
-    if (!(error instanceof WorkerUnavailableError)) throw error;
-  }
-  await setCampaignStatus(id, 'paused');
+  const client = requireClient();
+  // Flag in the database: every worker and every tab sees the same truth, and
+  // the run stops between delivery attempts.
+  const { error } = await client.from('campaigns')
+    .update({ pause_requested: true, status: 'paused' })
+    .eq('id', id);
+  if (error) throw fail(error, 'Could not pause the campaign.');
   return getCampaign(id);
 }
 
 export async function resumeCampaign(id) {
-  return startCampaign(id);
+  const client = requireClient();
+  const campaign = await getCampaign(id);
+  const queue = await pendingJobPayload(campaign);
+  if (!queue.length) throw new Error('There is nothing left to send in this campaign.');
+  // The snapshot is refreshed here too, so a campaign queued before a template
+  // change (or before this version) still has a sendable template.
+  const snapshot = await runSnapshot(campaign);
+  const { error } = await client.from('campaigns').update({
+    status: 'queued',
+    queued_at: new Date().toISOString(),
+    pause_requested: false,
+    cancel_requested: false,
+    ...snapshot,
+  }).eq('id', id);
+  if (error) throw fail(error, 'Could not resume the campaign.');
+  return getCampaign(id);
 }
 
 export async function cancelCampaign(id) {
-  try {
-    await worker.cancelCampaign(id);
-  } catch (error) {
-    if (!(error instanceof WorkerUnavailableError)) throw error;
-  }
-  await setCampaignStatus(id, 'cancelled', { finished_at: new Date().toISOString() });
+  const client = requireClient();
+  const { error } = await client.from('campaigns')
+    .update({
+      cancel_requested: true,
+      pause_requested: false,
+      status: 'cancelled',
+      finished_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) throw fail(error, 'Could not cancel the campaign.');
   return getCampaign(id);
 }
 
@@ -912,16 +967,87 @@ export async function getDashboard() {
       port: Number(settings.values.SMTP_PORT) || 0,
       worker_available: workerAvailable,
       worker_error: settings.worker?.error || '',
+      // Real queue availability, so the dashboard can explain *why* sending is
+      // waiting instead of showing a generic failure.
+      worker_configured: settings.worker?.configured !== false,
+      worker_queue_configured: Boolean(settings.worker?.queue?.configured ?? settings.worker?.configured),
+      worker_queue_online: Boolean(settings.worker?.queue?.consumer_online),
+      worker_queue_depth: Number(settings.worker?.queue?.queued || 0),
+      worker_note: describeWorkerState(settings.worker),
     },
     recent_activity: recent.items,
   };
+}
+
+/**
+ * Plain-language worker state for the dashboard notice. It never claims emails
+ * can be sent right now unless the worker really is available and ready.
+ */
+function describeWorkerState(worker) {
+  const configured = worker?.configured !== false;
+  const available = Boolean(worker?.available);
+  const queueOnline = Boolean(worker?.queue?.consumer_online);
+  const waiting = Number(worker?.queue?.queued || 0);
+  const queuedNote = waiting ? ` ${waiting} campaign(s) are waiting in the queue.` : '';
+
+  if (!configured) {
+    return 'Campaigns stay queued because no send worker is configured for this deployment.';
+  }
+  if (!available) {
+    if (worker?.local) {
+      return 'The send worker is not reachable. For local development, start it with "python worker/main.py".';
+    }
+    return `The send worker service is not reachable right now.${queuedNote || ' Queued campaigns are delivered automatically when it returns.'}`;
+  }
+  if (!queueOnline) {
+    return `The send worker is starting up.${queuedNote}`;
+  }
+  if (!worker?.has_password) {
+    return 'Add your Gmail App Password in Settings so the worker can send campaigns.';
+  }
+  return '';
 }
 
 export async function health() {
   const client = requireClient();
   const { error } = await client.from('profiles').select('id', { count: 'exact', head: true });
   if (error) throw fail(error, 'Supabase is unreachable.');
-  return { status: 'ok', app: 'Seed Code Mail', version: '2.0.0' };
+  return { status: 'ok', app: 'Seed Code Mail', version: APP_VERSION };
+}
+
+// --- profile ---------------------------------------------------------------
+
+/**
+ * The signed-in user's application profile row.
+ *
+ * Only non-secret, user-owned metadata lives here (a display name and its
+ * timestamps). Credentials — including any Gmail authorization — are never part
+ * of this record and are never readable through the public API key.
+ */
+export async function getProfile() {
+  const client = requireClient();
+  const user = requireUser();
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, display_name, created_at, updated_at')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (error) throw fail(error, 'Could not load your profile.');
+  return data || { id: user.id, display_name: '', created_at: null, updated_at: null };
+}
+
+/** Saves the display name on the `profiles` row (RLS restricts it to its owner). */
+export async function saveProfile({ display_name }) {
+  const client = requireClient();
+  const user = requireUser();
+  const name = String(display_name ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const { data, error } = await client
+    .from('profiles')
+    .upsert({ id: user.id, display_name: name })
+    .select('id, display_name, created_at, updated_at')
+    .single();
+  if (error) throw fail(error, 'Could not update your profile.');
+  return data;
 }
 
 // --- compatibility surface used by the UI modules --------------------------
@@ -929,6 +1055,9 @@ export async function health() {
 export const api = {
   health,
   dashboard: getDashboard,
+
+  profile: getProfile,
+  saveProfile,
 
   recipients: listRecipients,
   addRecipient,
