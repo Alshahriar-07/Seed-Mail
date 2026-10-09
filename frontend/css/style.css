@@ -94,7 +94,11 @@ input, select, textarea { font-family: inherit; }
 }
 
 .sidebar-controls { display: flex; align-items: center; gap: 2px; flex: none; }
-.sidebar-close { display: none; }
+
+/* `.icon-btn` (components.css) sets `display: inline-grid`, and it is loaded
+   after this file, so the show/hide rules for the three navigation buttons
+   must be at least as specific as `.icon-btn` or they silently lose. */
+.sidebar .sidebar-close { display: none; }
 
 .brand {
   display: flex;
@@ -234,7 +238,7 @@ input, select, textarea { font-family: inherit; }
 
 .topbar-actions { display: flex; align-items: center; gap: 12px; }
 
-.menu-toggle { display: none; }
+.app-shell .menu-toggle { display: none; }
 
 .smtp-indicator {
   display: inline-flex;
@@ -334,9 +338,9 @@ input, select, textarea { font-family: inherit; }
   .app-shell.sidebar-open .sidebar { transform: translateX(0); visibility: visible; }
   .app-shell.sidebar-open .sidebar-scrim { opacity: 1; pointer-events: auto; }
   .main { grid-column: 1; }
-  .menu-toggle { display: inline-grid; }
-  .sidebar-toggle { display: none; }
-  .sidebar-close { display: inline-grid; }
+  .app-shell .menu-toggle { display: inline-grid; }
+  .sidebar .sidebar-toggle { display: none; }
+  .sidebar .sidebar-close { display: inline-grid; }
   .view { padding: 20px 16px 56px; }
   .topbar { padding: 0 16px; }
   .profile-meta { display: none; }

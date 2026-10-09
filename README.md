@@ -110,7 +110,7 @@ design.
 
 | Variable | Value |
 | --- | --- |
-| `VITE_SUPABASE_URL` | `https://jptukeybgvuehdzghxfj.supabase.co` |
+| `VITE_SUPABASE_URL` | `----------` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | your Supabase **publishable (anon)** key |
 | `VITE_MAIL_WORKER_URL` | `http://127.0.0.1:8765` (default) |
 | `VITE_SITE_URL` | `https://mrseedmail.vercel.app` |

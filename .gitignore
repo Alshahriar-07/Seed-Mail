@@ -39,3 +39,4 @@ Thumbs.db
 # Temp files created by the atomic writer
 .*.tmp
 *.corrupt
+*.bat

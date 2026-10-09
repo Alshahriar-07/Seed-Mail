@@ -18,9 +18,56 @@ const REDIRECT_PATH = '/';
 
 export const AUTH_ROUTES = ['login', 'signup', 'forgot', 'update-password', 'verify'];
 
+/**
+ * How long session restoration may take before the UI gives up and offers a
+ * retry. Supabase fetches are not bounded by default, so without this a stalled
+ * request (slow network, paused project, blocked host) leaves the app on the
+ * loading screen forever.
+ */
+export const AUTH_INIT_TIMEOUT_MS = 10000;
+/** A stalled profile read must never delay the signed-in UI. */
+const PROFILE_TIMEOUT_MS = 8000;
+
+/**
+ * Thrown when a session cannot be resolved *at all* (stalled or failed
+ * request). This is deliberately distinct from "there is no session": a
+ * network failure must never be presented as the user being signed out.
+ */
+export class AuthInitError extends Error {
+  constructor(message, { reason = 'unavailable', cause = null } = {}) {
+    super(message);
+    this.name = 'AuthInitError';
+    this.reason = reason;
+    if (cause) this.cause = cause;
+  }
+}
+
+const TIMED_OUT = Symbol('auth-timeout');
 let currentSession = null;
 let currentProfile = null;
+let subscription = null;
+let profileRequest = 0;
 const listeners = new Set();
+
+/**
+ * Resolves with `promise` or, after `ms`, with `onTimeout()`. The original
+ * promise is always observed, so a late rejection can never surface as an
+ * unhandled promise rejection.
+ */
+function withTimeout(promise, ms, onTimeout) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { resolve(onTimeout()); } catch (error) { reject(error); }
+    }, ms);
+    Promise.resolve(promise).then(
+      (value) => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); },
+      (error) => { if (settled) return; settled = true; clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 // --- helpers ---------------------------------------------------------------
 
@@ -90,13 +137,14 @@ function consumeUrlError() {
 
 async function loadProfile(userId) {
   if (!supabase || !userId) return null;
-  const { data, error } = await supabase
+  const query = supabase
     .from('profiles')
     .select('id, display_name, created_at')
     .eq('id', userId)
     .maybeSingle();
-  if (error) return null; // profile is optional metadata; never block sign-in
-  return data || null;
+  const result = await withTimeout(query, PROFILE_TIMEOUT_MS, () => null);
+  if (!result || result.error) return null; // profile is optional metadata
+  return result.data || null;
 }
 
 // --- state / subscription --------------------------------------------------
@@ -108,7 +156,11 @@ export function currentUser() {
 function notify(event) {
   listeners.forEach((handler) => {
     try {
-      handler(event, currentSession);
+      const result = handler(event, currentSession);
+      // Handlers may be async: their rejections must not become unhandled.
+      if (result && typeof result.catch === 'function') {
+        result.catch((error) => console.error('[Seed Code Mail] auth listener failed:', error));
+      }
     } catch (error) {
       console.error('[Seed Code Mail] auth listener failed:', error);
     }
@@ -121,31 +173,97 @@ export function onAuthChange(handler) {
 }
 
 /**
+ * Loads the optional profile row *outside* the auth callback and without ever
+ * being awaited by it: the callback must stay synchronous, and a slow profile
+ * request must not hold up session resolution or the UI.
+ */
+function scheduleProfileLoad(userId) {
+  const request = ++profileRequest;
+  loadProfile(userId)
+    .then((profile) => {
+      if (request !== profileRequest) return; // a newer session superseded this
+      currentProfile = profile;
+      notify('profile', currentSession);
+    })
+    .catch(() => { /* profile is optional metadata */ });
+}
+
+/**
+ * Subscribes exactly once to Supabase auth events.
+ *
+ * The callback is intentionally synchronous: awaiting Supabase calls inside an
+ * `onAuthStateChange` handler can deadlock against the client's internal
+ * initialization and refresh coordination.
+ */
+function ensureAuthListener() {
+  if (subscription || !supabase) return;
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    currentSession = session || null;
+    if (event === 'PASSWORD_RECOVERY') setRecoveryPending(true);
+    if (event === 'SIGNED_OUT') {
+      profileRequest += 1;
+      currentProfile = null;
+      setRecoveryPending(false);
+    } else if (currentSession) {
+      scheduleProfileLoad(currentSession.user.id);
+    }
+    notify(event, currentSession);
+  });
+  subscription = data?.subscription || null;
+}
+
+/** Removes the Supabase auth subscription (used when tearing the app down). */
+export function disposeAuth() {
+  if (subscription) {
+    subscription.unsubscribe();
+    subscription = null;
+  }
+}
+
+export function isAuthListenerAttached() {
+  return Boolean(subscription);
+}
+
+/**
  * Restores a persisted session (page refresh / new tab) and subscribes to
  * Supabase auth events. Returns the initial session, or null.
+ *
+ * Always settles: either with the restored session, or by throwing
+ * AuthInitError when the session state cannot be determined in time. It never
+ * waits on profile data, so a slow Supabase read cannot block the UI.
  */
-export async function bootstrapAuth() {
+export async function bootstrapAuth({ timeoutMs = AUTH_INIT_TIMEOUT_MS } = {}) {
   if (!supabaseConfigured || !supabase) {
     notify('unconfigured', null);
     return null;
   }
 
-  const { data } = await supabase.auth.getSession();
-  currentSession = data?.session || null;
-  currentProfile = currentSession ? await loadProfile(currentSession.user.id) : null;
+  // Subscribe first so no auth event can be missed while the initial session
+  // is being read.
+  ensureAuthListener();
 
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    currentSession = session || null;
-    if (event === 'PASSWORD_RECOVERY') setRecoveryPending(true);
-    if (event === 'SIGNED_OUT') {
-      currentProfile = null;
-      setRecoveryPending(false);
-    } else if (currentSession) {
-      currentProfile = await loadProfile(currentSession.user.id);
-    }
-    notify(event, currentSession);
-  });
+  const result = await withTimeout(
+    Promise.resolve().then(() => supabase.auth.getSession()),
+    timeoutMs,
+    () => TIMED_OUT,
+  );
 
+  if (result === TIMED_OUT) {
+    throw new AuthInitError(
+      'Timed out while checking your session.',
+      { reason: 'timeout' },
+    );
+  }
+  if (result?.error) {
+    throw new AuthInitError(
+      'The authentication service could not be reached.',
+      { reason: 'unavailable', cause: result.error },
+    );
+  }
+
+  currentSession = result?.data?.session || null;
+  if (currentSession) scheduleProfileLoad(currentSession.user.id);
+  else currentProfile = null;
   return currentSession;
 }
 
@@ -282,6 +400,52 @@ function unconfiguredCard() {
         <span>Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>
         in <code>frontend/.env</code> (or in the Vercel project settings), then redeploy.</span></div>
     </div>`;
+}
+
+/** Loading card shown while the session is being restored (bounded). */
+export function authLoadingCard() {
+  return `
+    <div class="auth-card">
+      <div class="loading-inline"><span class="spinner"></span><span>Checking your session…</span></div>
+    </div>`;
+}
+
+/** Renders the loading state. Used when a retry restarts the session check. */
+export function renderAuthLoading(container) {
+  container.innerHTML = authLoadingCard();
+  refreshIcons(container);
+}
+
+/**
+ * Renders the recoverable session-restore failure.
+ *
+ * A failed session check is not the same as "signed out", so it never silently
+ * presents the login form as if it were authoritative: it explains that the
+ * session is unknown, offers a retry, and lets the user continue to sign in.
+ * No error internals are shown, and no credential is ever rendered.
+ */
+export function renderAuthInitFailure(container, { onRetry, onSignIn } = {}) {
+  container.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-card-head">
+        <h2>Could not check your session</h2>
+        <p>Seed Code Mail could not reach the authentication service to confirm
+        your session. Nothing was changed.</p>
+      </div>
+      <div class="notice notice-warning">${icon('wifi-off', 16)}
+        <span>Check your connection, then try again.</span></div>
+      <button class="btn btn-primary btn-block" type="button" id="auth-retry">${icon('refresh-cw', 16)} Try again</button>
+      <div class="auth-links"><span><a href="#/login" id="auth-fallback">Continue to sign in</a></span></div>
+    </div>`;
+  refreshIcons(container);
+
+  const retry = container.querySelector('#auth-retry');
+  retry.addEventListener('click', () => onRetry?.());
+  container.querySelector('#auth-fallback').addEventListener('click', (event) => {
+    event.preventDefault();
+    onSignIn?.();
+  });
+  retry.focus({ preventScroll: true });
 }
 
 function showError(container, message) {
