@@ -5,7 +5,7 @@
   "description": "Seed Code Mail — Gmail-connected email workspace (Vite frontend + Supabase + Vercel backend + campaign send worker).",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vite",
