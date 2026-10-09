@@ -75,6 +75,14 @@ export async function render(container) {
         </div>
 
         <div class="card" style="margin-top:20px;">
+          <div class="card-head"><h3>${icon('scale', 16)} Legal &amp; policies</h3></div>
+          <ul class="setup-list">
+            <li><a href="#/privacy" data-legal="privacy">Privacy Policy</a> — what is collected, which Gmail data is accessed, where it is stored and how to delete it.</li>
+            <li><a href="#/terms" data-legal="terms">Terms of Service</a> — account responsibilities, acceptable sending practices and service limits.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
           <div class="card-head"><h3>${icon('info', 16)} Not claimed</h3></div>
           <ul class="setup-list">
             <li>Submitting a message is not proof of inbox delivery — only that the provider accepted it.</li>

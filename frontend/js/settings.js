@@ -143,7 +143,19 @@ export async function render(container) {
       <span>The App Password is never sent back to the browser, never stored in Supabase, and never saved in localStorage or IndexedDB. It is written to the send worker's own environment on your machine.</span></div>
     <div id="worker-notice" style="margin-bottom:20px;"></div>
     <div id="settings-form"></div>
-    <div id="smtp-result" style="margin-top:20px;"></div>`;
+    <div id="smtp-result" style="margin-top:20px;"></div>
+
+    <div class="card" style="margin-top:20px;">
+      <div class="card-head"><h3>${icon('scale', 16)} Legal &amp; data handling</h3></div>
+      <p>The Privacy Policy describes every category of data this application stores, which Gmail
+      data it accesses and for what purpose, how the stored OAuth credential is protected, and how to
+      delete your data or revoke access. The Terms of Service cover account responsibilities,
+      acceptable sending practices and the limits of the service.</p>
+      <div class="page-actions">
+        <a class="btn btn-secondary" href="#/privacy" data-legal="privacy">${icon('shield', 16)} Privacy Policy</a>
+        <a class="btn btn-ghost" href="#/terms" data-legal="terms">${icon('file-text', 16)} Terms of Service</a>
+      </div>
+    </div>`;
 
   refreshIcons(container);
   const body = container.querySelector('#settings-form');

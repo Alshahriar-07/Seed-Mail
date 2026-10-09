@@ -85,7 +85,10 @@ export function connectCard({ title = 'Connect your Gmail account', message = ''
       <div class="card-head"><h3>${icon('mail-plus', 16)} ${escapeHtml(title)}</h3></div>
       <p>${escapeHtml(message || 'Seed Code Mail reads and sends mail through your own Gmail account using Google\'s official API. Your password is never shared, and Seed Code Mail never stores it.')}</p>
       <div class="notice">${icon('shield', 16)}<span>You will be sent to Google to approve access. Only these permissions are requested:
-        read your mail, send mail, change read/unread state, and save drafts. Disconnecting removes the stored authorization.</span></div>
+        read your mail, send mail, change read/unread state, and save drafts. Message contents are read on
+        demand and are not copied into this application's database; the stored authorization is encrypted and
+        cannot be read by the browser. Disconnecting removes it. See the
+        <a href="#/privacy" data-legal="privacy">Privacy Policy</a> for exactly which Gmail data is accessed.</span></div>
       <button class="btn btn-primary" id="gmail-connect">${icon('link', 16)} Connect Gmail</button>
       <div id="gmail-connect-error" class="notice notice-error" hidden></div>
     </div>`;

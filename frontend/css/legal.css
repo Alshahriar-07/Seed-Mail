@@ -1,0 +1,219 @@
+/* Seed Code Mail — public legal pages (Privacy Policy, Terms of Service)
+   and the public site footer.
+
+   These pages are served to signed-out visitors AND to crawlers, so they are
+   plain, fast and readable: one column, generous line length (< 78ch), high
+   contrast, no animation that could hide content from a reader or a crawler. */
+
+.site-footer {
+  margin: 22px auto 0;
+  max-width: 1080px;
+  padding: 18px 20px 4px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.site-footer .footer-brand { color: var(--black); font-weight: 600; }
+.site-footer .grow { flex: 1 1 auto; }
+.site-footer a { color: var(--muted); text-decoration: underline; }
+.site-footer a:hover { color: var(--black); }
+.site-footer a:focus-visible { outline: 2px solid var(--black); outline-offset: 2px; border-radius: 4px; }
+.site-footer .footer-sep { color: var(--muted-2); }
+
+/* --- standalone layout (used when a legal page is opened directly) --------- */
+
+.legal-layout {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--page-bg);
+}
+
+.legal-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--black);
+  min-width: 0;
+}
+.legal-topbar .brand-name { font-weight: 600; font-size: 14.5px; }
+.legal-topbar .brand-sub { color: var(--muted); font-size: 12px; }
+/* Smaller than the sidebar's brand mark, which is sized for a 256px rail. */
+.legal-topbar .brand-mark-sm { width: 32px; height: 32px; border-radius: 9px; flex: 0 0 auto; }
+
+.legal-topbar-nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.legal-topbar-nav a {
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.legal-topbar-nav a:hover { background: var(--surface-2); color: var(--black); }
+.legal-topbar-nav a[aria-current="page"] { color: var(--black); font-weight: 600; background: var(--surface-2); }
+.legal-topbar-nav a:focus-visible { outline: 2px solid var(--black); outline-offset: 2px; }
+
+/* --- document ------------------------------------------------------------- */
+
+.legal-shell {
+  flex: 1;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.legal-doc {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 34px 34px 30px;
+}
+
+.legal-doc h1 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.legal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+
+.legal-lede {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 14px 0 4px;
+}
+
+.legal-doc h2 {
+  font-size: 17px;
+  margin: 30px 0 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 76px;
+}
+.legal-doc h2:first-of-type { border-top: 0; padding-top: 0; }
+.legal-doc h3 { font-size: 14.5px; margin: 18px 0 6px; }
+
+.legal-doc p,
+.legal-doc li {
+  color: #262626;
+  font-size: 14px;
+  line-height: 1.7;
+  max-width: 74ch;
+}
+.legal-doc p { margin: 0 0 12px; }
+.legal-doc ul, .legal-doc ol { margin: 0 0 14px; padding-left: 22px; }
+.legal-doc li { margin-bottom: 7px; }
+.legal-doc li > ul, .legal-doc li > ol { margin-top: 7px; }
+.legal-doc strong { color: var(--black); }
+
+.legal-doc code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+
+.legal-doc a { color: var(--black); text-decoration: underline; overflow-wrap: anywhere; }
+.legal-doc a:focus-visible { outline: 2px solid var(--black); outline-offset: 2px; border-radius: 4px; }
+
+/* Table of contents: helps a reviewer (and a crawler) see the structure. */
+.legal-toc {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin: 18px 0 6px;
+}
+.legal-toc-title {
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.legal-toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 28px; }
+.legal-toc li { font-size: 13px; margin-bottom: 4px; }
+.legal-toc a { text-decoration: none; }
+.legal-toc a:hover { text-decoration: underline; }
+
+/* Honest, removable operator notice. It is not decoration: it marks the legal
+   and contact details the operator must confirm, and it is removed by setting
+   SHOW_OWNER_ACTION_NOTICE = false in frontend/js/legal.js. */
+.legal-owner-note {
+  border: 1px solid #F5D9A8;
+  background: var(--warning-bg);
+  color: #7A4A08;
+  border-radius: var(--radius);
+  padding: 13px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 16px 0 4px;
+}
+.legal-owner-note strong { color: #6B3F05; }
+.legal-owner-note ul { margin: 8px 0 0; padding-left: 20px; }
+.legal-owner-note li { font-size: 12.5px; color: #7A4A08; }
+
+.legal-contact {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  background: var(--page-bg);
+  margin: 6px 0 0;
+}
+.legal-contact dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+.legal-contact dt { color: var(--muted); font-size: 12.5px; }
+.legal-contact dd { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .legal-shell { padding: 22px 14px 40px; }
+  .legal-doc { padding: 22px 18px; border-radius: var(--radius); }
+  .legal-doc h1 { font-size: 22px; }
+  .legal-doc h2 { font-size: 16px; }
+  .legal-toc ol { columns: 1; }
+  .legal-topbar { padding: 10px 14px; gap: 8px; }
+  .legal-topbar .brand-sub { display: none; }
+  .legal-topbar-nav a { padding: 6px 9px; font-size: 12.5px; }
+  .legal-contact dl { grid-template-columns: 1fr; gap: 2px 0; }
+  .legal-contact dd { margin-bottom: 8px; }
+}
+
+@media print {
+  .legal-topbar, .site-footer { display: none; }
+  .legal-doc { border: 0; box-shadow: none; padding: 0; }
+}

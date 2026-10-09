@@ -1,14 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Seed Code Mail sitemap.
-  Only the public landing page is listed: login, signup, password reset and the
-  private application views are intentionally excluded (they are noindex, and
-  they are hash routes rather than separate URLs).
+  The public pages are listed here: the landing page plus the Privacy Policy and
+  the Terms of Service. Login, signup, password reset and the private application
+  views are intentionally excluded — they are noindex, and they are hash routes
+  rather than separate URLs.
+
+  The legal URLs are given in their path form (/privacy, /terms) because that is
+  the form Google's OAuth verification review expects and the form linked from
+  the homepage footer's canonical address. vercel.json rewrites both to the
+  single-page entry point, where the router renders the document.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://mrseedmail.vercel.app/</loc>
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://mrseedmail.vercel.app/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://mrseedmail.vercel.app/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
   </url>
 </urlset>

@@ -21,6 +21,7 @@ import * as history from './history.js';
 import * as profile from './profile.js';
 import * as settings from './settings.js';
 import * as about from './about.js';
+import * as legal from './legal.js';
 
 // The mailbox pages come first: reading and sending ordinary mail is the
 // primary job now, and campaigns are the workspace's bulk tool.
@@ -57,6 +58,10 @@ const menuToggle = document.getElementById('menu-toggle');
 const navClose = document.getElementById('nav-close');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const sidebarScrim = document.getElementById('sidebar-scrim');
+const legalRoot = document.getElementById('legal-root');
+const legalTopbar = document.getElementById('legal-topbar');
+const legalBody = document.getElementById('legal-body');
+const legalFooterEl = document.getElementById('legal-footer');
 
 let cleanup = null;
 let signedIn = false;
@@ -138,6 +143,7 @@ function showAuthScreen() {
   }
   view.innerHTML = '';
   closeSidebar();
+  legalRoot.hidden = true;
   appShell.hidden = true;
   authRoot.hidden = false;
   if (skipLink) skipLink.hidden = true;
@@ -150,10 +156,60 @@ function showApplication() {
   // The signed-out panel is not part of the authenticated layout.
   authPanel.innerHTML = '';
   authRoot.hidden = true;
+  legalRoot.hidden = true;
   appShell.hidden = false;
   // The skip link targets the app shell, so only reveal it when that exists.
   if (skipLink) skipLink.hidden = false;
   setIndexable(false);
+}
+
+// --- Public legal documents -------------------------------------------------
+// The Privacy Policy and Terms of Service are public: they must render for a
+// signed-out visitor, for a signed-in user, for a crawler, and on a build whose
+// Supabase configuration is missing. So they are checked before (and instead
+// of) every authentication branch, and they never wait on a session check.
+
+function showLegalPage(slug) {
+  // Leaving the application shell is a real teardown: a private view's timers
+  // and listeners must not keep running behind the document.
+  if (typeof cleanup === 'function') {
+    try { cleanup(); } catch (_) { /* ignore */ }
+    cleanup = null;
+  }
+  view.innerHTML = '';
+  closeSidebar();
+  appShell.hidden = true;
+  authRoot.hidden = true;
+  legalRoot.hidden = false;
+  if (skipLink) skipLink.hidden = true;
+
+  const meta = legal.LEGAL_META[slug];
+  document.title = `${meta.title} · Seed Code Mail`;
+  // Legal documents are exactly the kind of public page search engines should
+  // index, so this does NOT set the private noindex state.
+  setIndexable(true);
+
+  legal.renderPublicPage({
+    slug,
+    body: legalBody,
+    topbar: legalTopbar,
+    signedIn: Boolean(currentUser()),
+    refreshIcons,
+  });
+  if (legalFooterEl) legalFooterEl.innerHTML = legal.legalFooter();
+  refreshIcons(legalRoot);
+  legalBody.focus({ preventScroll: true });
+}
+
+/**
+ * Renders the requested legal document if the current URL asks for one.
+ * Returns true when it handled the location, so every caller can simply return.
+ */
+function renderLegalIfRequested() {
+  const slug = legal.legalSlugFromLocation();
+  if (!slug) return false;
+  showLegalPage(slug);
+  return true;
 }
 
 const AUTH_TITLES = {
@@ -162,6 +218,7 @@ const AUTH_TITLES = {
 };
 
 async function renderAuthRoute() {
+  if (renderLegalIfRequested()) return;
   showAuthScreen();
   setAuthView(AUTH_VIEW.unauthenticated);
   const name = normaliseAuthRoute(location.hash);
@@ -175,6 +232,7 @@ async function renderAuthRoute() {
 
 /** Loading state: shown only while the session check is actually running. */
 function renderInitializing() {
+  if (renderLegalIfRequested()) return;
   showAuthScreen();
   setAuthView(AUTH_VIEW.initializing);
   document.title = 'Seed Code Mail — Secure Email Campaign Management';
@@ -187,6 +245,7 @@ function renderInitializing() {
  * not presented as a retryable error.
  */
 async function renderConfiguration() {
+  if (renderLegalIfRequested()) return;
   showAuthScreen();
   setAuthView(AUTH_VIEW.configuration);
   document.title = 'Configuration required · Seed Code Mail';
@@ -200,6 +259,7 @@ async function renderConfiguration() {
  * manual route into the sign-in form if they want one.
  */
 function renderAuthFailure(error) {
+  if (renderLegalIfRequested()) return;
   showAuthScreen();
   setAuthView(AUTH_VIEW.error);
   document.title = 'Session check failed · Seed Code Mail';
@@ -268,6 +328,7 @@ export async function refreshTopbar() {
 // --- Router ----------------------------------------------------------------
 
 async function onHashChange() {
+  if (renderLegalIfRequested()) return;
   if (!signedIn) {
     renderAuthRoute();
     return;
@@ -293,6 +354,7 @@ async function onHashChange() {
 }
 
 async function renderAppRoute() {
+  if (renderLegalIfRequested()) return;
   const hash = location.hash.replace(/^#\/?/, '') || DEFAULT_ROUTE;
   const [name, ...params] = hash.split('/');
   if (!PRIVATE_ROUTES.includes(name)) {
@@ -466,6 +528,9 @@ window.addEventListener('hashchange', onHashChange);
 // --- Auth state ------------------------------------------------------------
 
 async function applyAuthState() {
+  // A legal document is not gated on the session: restore may finish long after
+  // the document has been read, and it must not replace what is on screen.
+  if (renderLegalIfRequested()) return;
   const user = currentUser();
   if (!user) {
     setAuthView(AUTH_VIEW.unauthenticated);
@@ -559,10 +624,17 @@ async function boot() {
     return;
   }
 
+  // A legal document is public and does not depend on Supabase being
+  // configured, so a direct visit renders it immediately rather than showing a
+  // session spinner first. The session restore below still runs, and
+  // applyAuthState() leaves the document in place when it settles.
+  const legalSlug = legal.legalSlugFromLocation();
+  if (legalSlug) showLegalPage(legalSlug);
+
   // Session restoration is explicitly bounded: the shell is only revealed once
   // Supabase confirms a session, and a stalled request ends in the recoverable
   // error state instead of an endless loading screen.
-  renderInitializing();
+  if (!legalSlug) renderInitializing();
   await startSessionRestore();
 
   // Ask the browser to keep local templates even under storage pressure.

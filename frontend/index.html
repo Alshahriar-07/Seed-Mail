@@ -42,6 +42,7 @@
   <link rel="stylesheet" href="/css/animations.css">
   <link rel="stylesheet" href="/css/mail.css">
   <link rel="stylesheet" href="/css/auth.css">
+  <link rel="stylesheet" href="/css/legal.css">
 
   <!-- Structured data: only truthful, verifiable facts about the product.
        No ratings, reviews or organisation claims are invented. -->
@@ -99,7 +100,32 @@
         snapshot to your own account row (protected by row level security) so the send
         worker can deliver it.
       </p>
+
+      <!-- Public footer. Rendered as static HTML so the Privacy Policy and Terms
+           links exist for a visitor (and a crawler) without executing JavaScript.
+           js/legal.js keeps the wording of each link in one place; the hrefs here
+           are the same hash routes the router handles. -->
+      <footer class="site-footer" id="auth-footer" aria-label="Site links">
+        <span class="footer-brand">Seed Code Mail</span>
+        <span class="footer-sep">·</span>
+        <a href="#/privacy" data-legal="privacy">Privacy Policy</a>
+        <span class="footer-sep">·</span>
+        <a href="#/terms" data-legal="terms">Terms of Service</a>
+        <span class="grow"></span>
+        <a href="https://mrseedmail.vercel.app/" rel="noreferrer noopener">mrseedmail.vercel.app</a>
+      </footer>
     </main>
+  </div>
+
+  <!-- Standalone legal layout (`/privacy`, `/terms` — or their hash forms).
+       Revealed by js/app.js whatever the authentication state, so these pages are
+       readable by a signed-out visitor, a reviewer, or a crawler, and after a
+       refresh. Kept in the static markup so the document container exists before
+       any script runs. -->
+  <div class="legal-layout" id="legal-root" hidden>
+    <div id="legal-topbar"></div>
+    <main class="legal-shell" id="legal-body" tabindex="-1"></main>
+    <footer class="site-footer" id="legal-footer" aria-label="Site links"></footer>
   </div>
 
   <noscript>

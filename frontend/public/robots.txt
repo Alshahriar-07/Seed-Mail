@@ -1,11 +1,14 @@
 # Seed Code Mail — https://mrseedmail.vercel.app/
 #
-# Only the public landing page at "/" is intended for search engines. The
-# signed-in application (dashboard, recipients, campaigns, templates, history,
-# settings) is a private, per-user area. It is served from the same URL by a
-# hash-based router, so it is not a separate crawlable path; the app sets
+# The public pages are "/" (the landing page), "/privacy" and "/terms". The
+# signed-in application (inbox, dashboard, recipients, campaigns, templates,
+# history, settings) is a private, per-user area. It is served from the same URL
+# by a hash-based router, so it is not a separate crawlable path; the app sets
 # `noindex, nofollow` on its meta robots tag the moment a session exists, and
 # no user data or credentials ever appear in the crawlable markup.
+#
+# /privacy and /terms are public policy documents: they render for a signed-out
+# visitor, a reviewer and a crawler, and they are where the footer links point.
 #
 # Nothing needs to be disallowed here: every real path (/robots.txt,
 # /sitemap.xml, /css/*, /js/*, /assets/*, /favicon.svg, /og-image.png) is

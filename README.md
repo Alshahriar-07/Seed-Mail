@@ -498,6 +498,11 @@ Health and diagnostics:
 > Campaign delivery requires this worker. Ordinary mail does **not**: Inbox,
 > Compose and Sent work whenever the Vercel functions are deployed.
 
+**Migrating this worker to Supabase Edge Functions and Cron was evaluated and is
+not currently possible without changing the delivery channel** — Edge Functions
+cannot open the SMTP socket the sender uses. §18 states the evidence, the three
+candidate designs and their costs.
+
 ---
 
 ## 11. Troubleshooting the worker authentication error
@@ -966,7 +971,10 @@ hide a genuine mismatch rather than fix it.
 1. **Gmail features need the deployed functions.** A plain static host can serve
    the UI but not the mailbox; the pages say so rather than faking data.
 2. **Sending campaigns needs the worker running.** The site alone cannot send
-   bulk mail. Queued campaigns wait and are delivered when it returns.
+   bulk mail. Queued campaigns wait and are delivered when it returns. This is why
+   the Edge Function migration in §18 matters, and why it was not shipped as a
+   half-built alternative: a scheduled function cannot open an SMTP socket, so the
+   change is a delivery-channel rewrite, not a hosting swap.
 3. **Templates are local to a browser.** No cross-device sync; export JSON to back
    up. When a campaign is queued, its template is snapshotted onto the user's own
    campaign row (RLS-protected) so the worker can send with the page closed.
@@ -1005,7 +1013,9 @@ commit can create.
 | Worker config from host env vars | `smtp_configured` is `true` with only environment variables set and no `.env` (§3.3). Measured before/after: `false` → `true` |
 | Import hygiene | the shadowing module is gone, a guard refuses to start if it returns, `import_hygiene_ok` is reported (§11d) |
 | Python suite | `python -m pytest tests/` — 116 passing |
-| JS suite | `npm test` — crypto, MIME, email-html, endpoints, api-route tests |
+| JS suite | `npm test` — 93 passing: crypto, MIME, email-html, endpoints, api-route and legal-document tests |
+| Public legal pages | `/privacy` and `/terms` render without a session; verified in headless Chrome against the built bundle (§19) |
+| No secret in the front-end bundle | every non-empty value in `.env` was searched for in `dist/`; the only matches are literals that already exist in `frontend/` source (a display name, the default `smtp.gmail.com`, a public GitHub URL). No credential value is present |
 
 ### Still manual — required before the product is fully live
 
@@ -1028,9 +1038,169 @@ commit can create.
    not been performed from this environment and is the last thing to confirm. Until
    it is, treat "working" as "implemented and unit-tested", not "proven in
    production".
+7. **Confirm the legal and contact details** listed in §19 (`OWNER_ACTIONS`): the
+   support address, whether to publish a registered entity name and postal address,
+   and the governing law. Until they are resolved, the pages say so on themselves.
+8. **Complete the Google Cloud Console steps in §20.** They involve account access
+   and dashboards that no commit can perform.
 
 ### Not claimed
 
 No send is ever marked successful before the SMTP relay accepts it; the worker's
 health endpoint never returns a fabricated "online"; and no code path substitutes
 mock mail, seeded inbox contents or fake delivery statuses for the real Gmail API.
+
+---
+
+## 18. Can the send worker move to Supabase Edge Functions + Cron?
+
+**Determination: not with the current delivery channel, and not as a safe
+like-for-like replacement. Nothing was migrated, and no partially-migrated path
+was left behind.** The evidence is below; it is code-level, not an opinion.
+
+### Why the current worker cannot run as an Edge Function
+
+Campaign mail is delivered over **SMTP**, and SMTP needs a raw TCP/TLS socket:
+
+* `services/email_service.py` imports `smtplib`, `socket` and `ssl`, and connects
+  with `smtplib.SMTP_SSL(host, 465, ...)` (or `SMTP` + `STARTTLS` on other ports).
+* `worker/sender.py` opens one connection per message, keeps it for the run,
+  applies a configurable delay between sends, and writes state back to Supabase
+  after every attempt.
+
+Supabase Edge Functions run on Deno Deploy, which **does not provide raw TCP
+sockets**. `smtplib` has no equivalent there, so the existing sender cannot be
+ported as-is. Any statement that it "just needs to be moved" would be wrong.
+
+### What would actually work, and what it costs
+
+There are three candidate designs. Only the third preserves delivery from the
+project's own Gmail account without a new paid dependency.
+
+| Design | Runtime that can do it | What it changes |
+| --- | --- | --- |
+| Keep the Python SMTP worker (§10) | any host with a long-lived process | nothing — this is the current design |
+| Move sending to an email HTTP API called from an Edge Function | Edge Function + `pg_cron` | the delivery channel changes from the project's Gmail account to a third-party sender; **from-address and deliverability change**, free tiers are small (e.g. ~100/day / ~3,000/month on the common ones), and a new data processor is introduced |
+| Send through the **Gmail API** (`users.messages.send`) from an Edge Function using each user's stored OAuth refresh token | Edge Function + `pg_cron` | pure HTTPS, so it runs in Deno; keeps sending from the user's own Gmail account; but it **replaces SMTP with per-user OAuth** — the App Password path disappears, the sender identity becomes the connected account instead of `Email` in settings, and the OAuth app must hold a restricted scope (`gmail.send`) with verified status |
+
+Design 3 is the only one that both fits the runtime and avoids a paid email
+provider. It is a real project, not a port:
+
+1. the send loop is rewritten in TypeScript (Deno) and split into small, bounded
+   batches, because an Edge Function has a wall-clock limit far shorter than a
+   campaign;
+2. the App Password path in `worker/sender.py` and `worker/settings_overrides.py`
+   is replaced by the encrypted refresh token in `gmail_connections` (already
+   stored, §5.3), which the function must decrypt server-side;
+3. `pg_cron` + `pg_net` (or Vault-held secrets) drive the schedule, and the
+   existing atomic claim (`claim_next_campaign`, §10) is reused, so no schema
+   change is required and the queue stays compatible;
+4. retries, idempotency and "never mark sent before the provider accepts" must be
+   re-proven for the new channel, because Gmail API sends return a message id
+   while SMTP sends do not — that difference changes what `email_history` can
+   truthfully claim.
+
+It could not be implemented and verified in this environment, and shipping it
+would have meant either (a) leaving a send path that cannot be tested — the
+failure mode of which is "campaigns silently never send" — or (b) claiming a
+migration that was never exercised. Neither is acceptable, so it is recorded here
+as a **designed, unimplemented** option. The current worker remains the only send
+path, and §17 item 1 (deploy the worker host) is still required for campaigns.
+
+### What an owner needs before choosing design 3
+
+* A decision to request **`gmail.send` as a restricted scope with verification**
+  (this is a stricter Google review than the current submission), or to keep SMTP.
+* Confirmation of Supabase plan limits for scheduled function invocations and
+total runtime per day, against the largest campaign that must be sent.
+* A willingness to accept that a scheduled function's batch size caps how fast a
+  campaign can drain: a 10,000-recipient campaign on a short-interval schedule is
+  a very different shape from one long-lived worker connection.
+
+---
+
+## 19. Public legal pages
+
+The Privacy Policy and Terms of Service are **implemented as public routes**, not
+as a draft to be filled in later:
+
+| Page | URL to give Google | Also reachable as |
+| --- | --- | --- |
+| Privacy Policy | `https://mrseedmail.vercel.app/privacy` | `https://mrseedmail.vercel.app/privacy-policy`, `#/privacy` |
+| Terms of Service | `https://mrseedmail.vercel.app/terms` | `https://mrseedmail.vercel.app/terms-of-service`, `#/terms` |
+
+Both render from `frontend/js/legal.js` and are reached from the public homepage
+footer (`frontend/index.html`), the Settings page, the About page, and the Gmail
+connect card — the last of which is the privacy notice shown at the point where a
+user grants Gmail access. They render for a signed-out visitor, for a signed-in
+user, on a build with no Supabase configuration, and after a refresh.
+
+* The documents describe the schema in `supabase/migrations/*.sql` and the code in
+  `api/` and `backend/` — including the fact that **Gmail message contents are not
+  copied into the database**, that the refresh token is stored AES-256-GCM
+  encrypted in a table the browser cannot read, and that campaign mail is sent by
+  the worker using a Gmail App Password held in the worker's own environment.
+* No claim of Google verification, certification or guaranteed delivery appears in
+  either document, and `tests/js/legal.test.mjs` fails the build if one is added.
+* **Owner actions are rendered on the pages themselves** while they are
+  outstanding, and listed here: confirm the published support address is one you
+  monitor; decide whether to publish a registered entity name and postal address
+  (none is claimed, because none could be verified from this repository); and
+  confirm the governing law for the Terms. They are held in `OWNER_ACTIONS` in
+  `frontend/js/legal.js`, and the notice disappears when
+  `SHOW_OWNER_ACTION_NOTICE` is set to `false` after they are resolved.
+* These are implementation drafts written from the actual behaviour of the
+  application. They are not legal advice, and Google has not reviewed them.
+
+---
+
+## 20. Google OAuth verification readiness
+
+What the application provides, and what only the owner can do. Nothing here is a
+claim that verification has been granted.
+
+### Application side (in this repository)
+
+| Requirement | Where it is satisfied |
+| --- | --- |
+| Homepage describes the app's purpose without signing in | `frontend/index.html` — the signed-out layout is static HTML, so it is visible to a crawler as well as a visitor |
+| Application name shown as "Seed Code Mail" | title, `og:*`, `SoftwareApplication` structured data, the sidebar brand and both legal documents |
+| Privacy Policy URL | `/privacy` (§19), linked from the homepage footer |
+| Terms of Service URL | `/terms` (§19), linked from the homepage footer |
+| Legal pages work without authentication | verified in headless Chrome against the built bundle: `/privacy`, `/terms`, `/privacy-policy` and the `#/…` forms all render the document, and a direct visit followed by `#/inbox` still routes to the app |
+| Scope justification | §5.2 — four scopes, each tied to a shipped feature; broader scopes are deliberately not requested. The same table is summarised in the Privacy Policy |
+| Privacy notice at the point of access | the Gmail connect card in `frontend/js/mail-common.js` names the permissions and links the policy |
+
+### Google Cloud Console side (owner, not in this repository)
+
+1. **OAuth consent screen** — app name, user support email, and a developer contact
+   address. The support address published in §19 must be one you actually monitor;
+   Google emails it.
+2. **App homepage / Privacy / Terms URLs** — the three URLs in §19, on the
+   **production** domain, over HTTPS.
+3. **Authorised JavaScript origins** — `https://mrseedmail.vercel.app` (and
+   `https://seedmail-beta.vercel.app` only if the beta deployment is also part of
+   the same OAuth client).
+4. **Authorised redirect URIs** — `https://mrseedmail.vercel.app/api/gmail/callback`,
+   matching `GOOGLE_OAUTH_REDIRECT_URI` exactly (§3.2), plus the beta callback if it
+   is used.
+5. **Domain verification** in Search Console for the authorised domain, if Google
+   requests it for branding.
+6. **Publishing status** — while the app is in Testing, only accounts on the test
+   user list can authorize it, and refresh tokens issued in Testing expire. Moving
+   to Production requires verification for the requested scopes.
+7. **Verification materials** — a reviewer needs to sign in and exercise Inbox,
+   Compose and Send, so provide working test credentials in the submission form
+   (never in this repository), and a short demonstration video if the flow cannot
+   be reached without one. `gmail.readonly` and `gmail.modify` are sensitive
+   scopes, so expect the restricted-scope review rather than a quick approval.
+8. **Scope reduction question** — `gmail.compose` currently backs "save as draft".
+   If drafts are not required for the submission, dropping it, and its code path,
+   narrows the review; that is a product decision, not something to change blindly,
+   because the scope is genuinely used.
+
+### Not claimed
+
+This section is preparation, not approval. Adding the legal pages does not by
+itself satisfy Google's verification requirements, and no reviewer has seen this
+application.
