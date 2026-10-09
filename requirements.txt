@@ -1,8 +1,19 @@
+# Seed Code Mail — backend / send worker
+#
+# These packages power:
+#   * the local send worker (worker/main.py) that performs Gmail SMTP delivery
+#   * the legacy local-only application (app.py)
+#   * the Python test suite
 fastapi>=0.110
 uvicorn>=0.27
+# Loads the worker's .env (Gmail SMTP + Supabase configuration) into the
+# process environment. Nothing else populates those variables.
 python-dotenv>=1.0
 pydantic>=2.5
 
+# HTTP client used by the send worker to verify Supabase sessions and to write
+# campaign progress under the user's own Row Level Security identity.
+httpx>=0.27
+
 # Testing
 pytest>=8.0
-httpx>=0.27

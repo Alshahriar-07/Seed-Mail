@@ -333,14 +333,13 @@ export async function render(container, { params = [] } = {}) {
   container.querySelector('#rc-status').addEventListener('change', (e) => { state.status = e.target.value; load(); });
   container.querySelector('#btn-add').addEventListener('click', () => openRecipientModal());
   container.querySelector('#btn-import').addEventListener('click', openImportModal);
-  container.querySelector('#btn-export').addEventListener('click', (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+  container.querySelector('#btn-export').addEventListener('click', () => {
     openModal({
       title: 'Export recipients',
-      body: '<p class="modal-text">Choose a format. The file downloads directly from the local server.</p>',
+      body: '<p class="modal-text">Choose a format. The file is generated in your browser from your own recipient records.</p>',
       actions: [
-        { label: 'CSV', variant: 'btn-secondary', onClick: () => window.open(api.exportRecipientsUrl('csv'), '_blank') },
-        { label: 'JSON', variant: 'btn-primary', onClick: () => window.open(api.exportRecipientsUrl('json'), '_blank') },
+        { label: 'CSV', variant: 'btn-secondary', onClick: async () => { await api.exportRecipients('csv'); } },
+        { label: 'JSON', variant: 'btn-primary', onClick: async () => { await api.exportRecipients('json'); } },
       ],
     });
   });

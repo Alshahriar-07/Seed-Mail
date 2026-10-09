@@ -3,18 +3,114 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Seed Code Mail</title>
-  <meta name="description" content="Seed Code Mail - local HTML email campaign manager">
-  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+
+  <!-- SEO ---------------------------------------------------------------- -->
+  <title>Seed Code Mail — Secure Email Campaign Management</title>
+  <meta name="description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <link rel="canonical" href="https://mrseedmail.vercel.app/">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#111111">
+  <meta name="color-scheme" content="light">
+  <meta name="author" content="Seed Code Mail">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Seed Code Mail">
+  <meta property="og:url" content="https://mrseedmail.vercel.app/">
+  <meta property="og:title" content="Seed Code Mail — Secure Email Campaign Management">
+  <meta property="og:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta property="og:image" content="https://mrseedmail.vercel.app/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Seed Code Mail — secure email campaign management">
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Seed Code Mail — Secure Email Campaign Management">
+  <meta name="twitter:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta name="twitter:image" content="https://mrseedmail.vercel.app/og-image.png">
+
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
+  <link rel="stylesheet" href="/css/auth.css">
+
+  <!-- Structured data: only truthful, verifiable facts about the product.
+       No ratings, reviews or organisation claims are invented. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Seed Code Mail",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "url": "https://mrseedmail.vercel.app/",
+    "description": "Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
 </head>
 <body>
-  <div class="app-shell">
+  <!-- Only meaningful once the application shell is visible (it is the element
+       that lets a keyboard user bypass the sidebar navigation). js/app.js
+       reveals it when a session exists, so it is never a dead link on the
+       public landing view. -->
+  <a class="skip-link" id="skip-link" href="#main-content" hidden>Skip to content</a>
+
+  <!-- Public, crawlable signed-out view. This markup is served as static HTML
+       so search engines see real content without executing JavaScript. The
+       private application shell below stays hidden until a session exists, and
+       its routes are marked noindex at runtime. -->
+  <div class="auth-layout" id="auth-root">
+    <section class="auth-brand" aria-labelledby="landing-title">
+      <div class="brand brand-lg">
+        <div class="brand-mark"><i data-lucide="mail" data-size="22"></i></div>
+        <div class="brand-text">
+          <span class="brand-name">Seed Code Mail</span>
+          <span class="brand-sub">Secure Email Campaign Management</span>
+        </div>
+      </div>
+
+      <h1 id="landing-title">Personalised outreach, without the spreadsheet chaos.</h1>
+      <p class="auth-lede">
+        Seed Code Mail helps you manage recipients, craft custom HTML email templates,
+        and run personalised campaigns with real progress, retry control and a complete
+        submission history.
+      </p>
+
+      <ul class="auth-points">
+        <li><i data-lucide="users" data-size="16"></i><span>Recipient lists with import, search and duplicate detection.</span></li>
+        <li><i data-lucide="code" data-size="16"></i><span>An HTML template studio with live sandboxed preview and <code>{{COMPANY_NAME}}</code> style personalisation.</span></li>
+        <li><i data-lucide="shield-check" data-size="16"></i><span>Account data is isolated per user with row level security; email templates stay in your browser.</span></li>
+        <li><i data-lucide="activity" data-size="16"></i><span>Per-campaign subjects, bounded retries, pause, resume and cancel.</span></li>
+      </ul>
+
+      <p class="auth-footnote">
+        Signed-in features require an account. Email templates are stored locally in
+        this browser and are never uploaded to the server.
+      </p>
+    </section>
+
+    <section class="auth-panel" id="auth-panel" aria-live="polite">
+      <!-- Rendered by js/auth.js -->
+    </section>
+  </div>
+
+  <noscript>
+    <div class="noscript-notice">
+      Seed Code Mail requires JavaScript to run campaigns and manage recipients.
+      Please enable JavaScript to sign in.
+    </div>
+  </noscript>
+
+  <div class="app-shell" id="app-shell" hidden>
     <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
       <div class="brand">
         <div class="brand-mark"><i data-lucide="mail" data-size="20"></i></div>
@@ -36,30 +132,31 @@
 
       <div class="sidebar-footer">
         <span class="status-led" id="sidebar-led"></span>
-        <span id="sidebar-status">Checking server…</span>
+        <span id="sidebar-status">Checking sync…</span>
       </div>
     </aside>
 
     <div class="sidebar-scrim" id="sidebar-scrim"></div>
 
-    <div class="main">
+    <div class="main" id="main-content" tabindex="-1">
       <header class="topbar">
         <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Toggle navigation"><i data-lucide="menu" data-size="20"></i></button>
         <div class="topbar-title">
           <h1 id="section-title">Dashboard</h1>
         </div>
         <div class="topbar-actions">
-          <button class="smtp-indicator" id="smtp-indicator" title="SMTP connection status">
-            <span class="status-led"></span><span class="smtp-label">SMTP</span>
+          <button class="smtp-indicator" id="smtp-indicator" title="Send worker and SMTP status">
+            <span class="status-led"></span><span class="smtp-label">Worker</span>
           </button>
           <button class="icon-btn" id="settings-shortcut" aria-label="Open settings" title="Settings"><i data-lucide="settings-2" data-size="18"></i></button>
-          <div class="profile-chip" id="profile-chip" title="Sender identity">
+          <div class="profile-chip" id="profile-chip" title="Signed-in account">
             <span class="avatar" id="profile-avatar">?</span>
             <span class="profile-meta">
-              <span class="profile-name" id="profile-name">Not configured</span>
-              <span class="profile-email" id="profile-email">Open Settings</span>
+              <span class="profile-name" id="profile-name">—</span>
+              <span class="profile-email" id="profile-email">—</span>
             </span>
           </div>
+          <button class="icon-btn" id="signout" aria-label="Sign out" title="Sign out"><i data-lucide="log-out" data-size="18"></i></button>
         </div>
       </header>
 

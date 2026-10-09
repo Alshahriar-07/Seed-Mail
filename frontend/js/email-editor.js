@@ -668,9 +668,14 @@ function importHtml() {
   });
 }
 
-function exportTemplate() {
+async function exportTemplate() {
   if (!state.id) { toast('Save the template before exporting.', 'warning'); return; }
-  window.open(api.exportTemplateUrl(state.id), '_blank');
+  try {
+    await api.exportTemplateHtml(state.id);
+    toast('Template exported as an HTML file.', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 
 async function deleteTemplate() {

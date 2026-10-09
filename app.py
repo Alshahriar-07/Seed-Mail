@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -594,26 +594,19 @@ def clear_history() -> dict[str, int]:
 # ---------------------------------------------------------------------------
 # Frontend static files (mounted last so /api takes precedence)
 # ---------------------------------------------------------------------------
+#
+# The browser application is now built by Vite (`npm run build` -> ./dist) and
+# served as a static site (on Vercel, and locally here). When a build exists it
+# takes precedence over the raw sources, because the sources rely on Vite to
+# inline the public VITE_* configuration.
 
-FRONTEND_DIR = storage.FRONTEND_DIR
+_DIST_DIR = storage.BASE_DIR / "dist"
+FRONTEND_DIR = _DIST_DIR if (_DIST_DIR / "index.html").exists() else storage.FRONTEND_DIR
 
 if FRONTEND_DIR.exists():
-    app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
-    app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
-    assets_dir = FRONTEND_DIR / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-    @app.get("/")
-    def index():
-        return FileResponse(FRONTEND_DIR / "index.html")
-
-    @app.get("/favicon.ico")
-    def favicon():
-        icon = FRONTEND_DIR / "assets" / "favicon.svg"
-        if icon.exists():
-            return FileResponse(icon, media_type="image/svg+xml")
-        raise _error(404, "Not found")
+    # A single mount serves index.html, the bundled assets, and the public
+    # files (robots.txt, sitemap.xml, favicon.svg, og-image.png).
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
 def run() -> None:

@@ -175,10 +175,6 @@ class TemplateService:
     def get(self, template_id: str) -> dict[str, Any] | None:
         return next((t for t in self._load() if t.get("id") == template_id), None)
 
-    def get_default(self) -> dict[str, Any] | None:
-        items = self._load()
-        return next((t for t in items if t.get("is_default")), items[0] if items else None)
-
     # -- writes -------------------------------------------------------------
 
     def _clean_design(self, design: dict[str, Any] | None) -> dict[str, str]:

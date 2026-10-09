@@ -40,15 +40,6 @@ class SendOutcome:
     def retryable(self) -> bool:
         return self.status == "failed" and self.category in RETRYABLE_CATEGORIES
 
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "status": self.status,
-            "category": self.category,
-            "message": self.message,
-            "retryable": self.retryable,
-        }
-
-
 def _clean(message: Any) -> str:
     """Sanitize an error message so no credential-like text is exposed."""
     text = str(message or "").strip()
@@ -75,10 +66,6 @@ class EmailService:
             "email": s.get("Email", ""),
             "password": s.get("GAPP_PASS", ""),
         }
-
-    def is_configured(self) -> bool:
-        cfg = self._config()
-        return bool(cfg["email"] and cfg["password"])
 
     def _connect(self):
         cfg = self._config()

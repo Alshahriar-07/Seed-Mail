@@ -1,0 +1,20 @@
+{
+  "name": "seed-code-mail",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Seed Code Mail — secure email campaign management (Vite frontend + Supabase, local Gmail SMTP send worker).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "test": "node --test \"tests/js/*.test.mjs\"",
+    "test:rls": "node supabase/tests/rls_isolation.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "devDependencies": {
+    "vite": "^5.4.8"
+  }
+}

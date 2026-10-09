@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    background: #F7F7F7;
+    font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #111111;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 72px 80px;
+  }
+  .top { display: flex; align-items: center; gap: 18px; }
+  .mark {
+    width: 64px; height: 64px; border-radius: 16px; background: #111111;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mark svg { width: 34px; height: 34px; stroke: #FFFFFF; fill: none; stroke-width: 1.9; }
+  .brand { font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: 66px; line-height: 1.08; font-weight: 700; letter-spacing: -0.025em; max-width: 20ch; }
+  h1 .dim { color: #A3A3A3; }
+  .foot { display: flex; align-items: center; justify-content: space-between; border-top: 2px solid #E5E5E5; padding-top: 26px; }
+  .tag { font-size: 24px; color: #737373; }
+  .url { font-size: 24px; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+        <path d="m2 7 10 6 10-6"></path>
+      </svg>
+    </div>
+    <div class="brand">Seed Code Mail</div>
+  </div>
+
+  <h1>Personalised email campaigns,<br><span class="dim">without the spreadsheet chaos.</span></h1>
+
+  <div class="foot">
+    <div class="tag">Recipients · HTML templates · Campaigns · History</div>
+    <div class="url">mrseedmail.vercel.app</div>
+  </div>
+</body>
+</html>

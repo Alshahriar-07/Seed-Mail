@@ -17,6 +17,17 @@ function field(id, label, value, { type = 'text', hint = '', wide = false } = {}
 
 function paint(data) {
   const v = data.values;
+
+  const notice = host.querySelector('#worker-notice');
+  if (notice) {
+    const available = Boolean(data.worker?.available);
+    notice.innerHTML = `<div class="notice ${available ? 'notice-success' : 'notice-warning'}">
+      ${icon(available ? 'check-circle-2' : 'alert-circle', 16)}
+      <span>${available
+        ? 'Send worker reachable. Emails are sent by this worker, not by the hosted website.'
+        : `Send worker not running — campaigns cannot be started and the App Password cannot be saved. Start it with "python worker/main.py". ${escapeHtml(data.worker?.error || '')}`}</span></div>`;
+  }
+
   host.querySelector('#settings-form').innerHTML = `
     <div class="grid grid-2">
       <div class="card">
@@ -24,7 +35,8 @@ function paint(data) {
         ${field('s-email', 'Sender Gmail address', data.email, { type: 'email', hint: 'The Gmail account that sends the emails (Email in .env).' })}
         ${field('s-name', 'Sender display name', v.SENDER_NAME)}
         ${field('s-github', 'GitHub URL (optional)', v.GITHUB_URL, { hint: 'Used by the {{GITHUB_URL}} template variable. Leave blank if unused.', wide: true })}
-        ${field('s-pass', 'Gmail App Password', '', { type: 'password', hint: data.has_password ? 'A password is configured. Leave blank to keep it unchanged.' : 'No password configured yet. Paste your 16-character App Password (GAPP_PASS).', wide: true })}
+        ${field('s-pass', 'Gmail App Password', '', { type: 'password', hint: data.has_password ? 'An App Password is configured on the send worker. Leave blank to keep it unchanged.' : 'No password configured yet. Paste your 16-character Gmail App Password — it is sent only to the local worker.', wide: true })}
+        <div class="kv"><span>Send worker</span><span>${data.worker?.available ? 'Running' : 'Not running'}</span></div>
       </div>
 
       <div class="card">
@@ -72,7 +84,8 @@ export async function render(container) {
 
   container.innerHTML = `
     <div class="page-head">
-      <div><h2>Settings</h2><p>Configure the sender identity and SMTP connection. Secrets are stored server-side only.</p>
+      <div><h2>Settings</h2><p>Configure the sender identity and SMTP connection.</p>
+        <p class="hint">Non-secret preferences are stored in your account (Supabase). The Gmail App Password is only ever written to the send worker on your own machine — never to Supabase or the browser.</p>
         <p class="hint">The email subject is set per campaign, not here.</p></div>
       <div class="page-actions">
         <button class="btn btn-ghost" id="btn-defaults">${icon('rotate-ccw', 16)} Reset defaults</button>
@@ -82,7 +95,8 @@ export async function render(container) {
       </div>
     </div>
     <div class="notice" style="margin-bottom:20px;">${icon('shield', 16)}
-      <span>The App Password is never sent back to the browser. Exporting or viewing this page never exposes stored secrets.</span></div>
+      <span>The App Password is never sent back to the browser, never stored in Supabase, and never saved in localStorage or IndexedDB. It is written to the send worker's own environment on your machine.</span></div>
+    <div id="worker-notice" style="margin-bottom:20px;"></div>
     <div id="settings-form"></div>
     <div id="smtp-result" style="margin-top:20px;"></div>`;
 
@@ -100,7 +114,7 @@ export async function render(container) {
     btn.innerHTML = spinner('Saving');
     try {
       await api.saveSettings(collect());
-      toast('Settings saved to .env.', 'success');
+      toast('Settings saved.', 'success');
       await load();
       await refreshTopbar();
     } catch (e) {

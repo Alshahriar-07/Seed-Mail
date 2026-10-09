@@ -1,5 +1,18 @@
 # Secrets - never commit
 .env
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+*.pem
+
+# Node / Vite build
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# Vercel
+.vercel/
 
 # Virtual environments
 .venv/

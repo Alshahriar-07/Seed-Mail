@@ -67,7 +67,10 @@ async function load() {
     try { await api.setDefaultTemplate(b.dataset.default); toast('Default template updated.', 'success'); load(); }
     catch (e) { toast(e.message, 'error'); }
   }));
-  list.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', () => window.open(api.exportTemplateUrl(b.dataset.export), '_blank')));
+  list.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', async () => {
+    try { await api.exportTemplateHtml(b.dataset.export); }
+    catch (e) { toast(e.message, 'error'); }
+  }));
   list.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     const card = b.closest('.card');
     const name = card.querySelector('h3').textContent;
@@ -113,16 +116,35 @@ export async function render(container) {
   host = container;
   container.innerHTML = `
     <div class="page-head">
-      <div><h2>Email Templates</h2><p>Saved HTML email designs you can reuse across campaigns.</p></div>
+      <div><h2>Email Templates</h2><p>Saved HTML email designs you can reuse across campaigns.</p>
+        <p class="hint">Templates are stored in this browser only — they do not sync to other devices. Export JSON regularly to back them up.</p></div>
       <div class="page-actions">
+        <button class="btn btn-ghost" id="btn-export-all">${icon('download', 16)} Export all (JSON)</button>
+        <button class="btn btn-ghost" id="btn-import-json">${icon('upload', 16)} Import JSON</button>
         <button class="btn btn-secondary" id="btn-import-tpl">${icon('upload', 16)} Import HTML</button>
         <button class="btn btn-primary" id="btn-new-tpl">${icon('plus', 16)} Create Template</button>
       </div>
     </div>
+    <input type="file" id="tpl-json-input" accept=".json,application/json" hidden>
     <div id="template-list"></div>`;
 
   refreshIcons(container);
   container.querySelector('#btn-new-tpl').addEventListener('click', startBlankTemplate);
   container.querySelector('#btn-import-tpl').addEventListener('click', importTemplateModal);
+  container.querySelector('#btn-export-all').addEventListener('click', async () => {
+    try { await api.exportAllTemplatesJson(); toast('Templates exported as JSON.', 'success'); }
+    catch (e) { toast(e.message, 'error'); }
+  });
+  const jsonInput = container.querySelector('#tpl-json-input');
+  container.querySelector('#btn-import-json').addEventListener('click', () => jsonInput.click());
+  jsonInput.addEventListener('change', async () => {
+    if (!jsonInput.files.length) return;
+    try {
+      const result = await api.importTemplatesJson(await jsonInput.files[0].text());
+      toast(`Imported ${result.imported} template(s), skipped ${result.skipped}.`, result.imported ? 'success' : 'warning');
+      await load();
+    } catch (e) { toast(e.message, 'error'); }
+    jsonInput.value = '';
+  });
   await load();
 }

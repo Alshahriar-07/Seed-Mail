@@ -69,9 +69,16 @@ async function load() {
   pag.querySelector('#pg-next')?.addEventListener('click', () => { state.page += 1; load(); });
 }
 
-function exportUrl(format) {
-  const params = { format, search: state.search, status: state.status, campaign_id: state.campaign_id, date_from: state.date_from, date_to: state.date_to };
-  return api.exportHistoryUrl(params);
+async function exportHistory(format) {
+  // Exports are generated in the browser from the current filters.
+  await api.exportHistory({
+    format,
+    search: state.search,
+    status: state.status,
+    campaign_id: state.campaign_id,
+    date_from: state.date_from,
+    date_to: state.date_to,
+  });
 }
 
 export async function render(container) {
@@ -117,8 +124,8 @@ export async function render(container) {
   container.querySelector('#h-from').addEventListener('change', (e) => { state.date_from = e.target.value; state.page = 1; load(); });
   container.querySelector('#h-to').addEventListener('change', (e) => { state.date_to = e.target.value; state.page = 1; load(); });
 
-  container.querySelector('#btn-export-csv').addEventListener('click', () => window.open(exportUrl('csv'), '_blank'));
-  container.querySelector('#btn-export-json').addEventListener('click', () => window.open(exportUrl('json'), '_blank'));
+  container.querySelector('#btn-export-csv').addEventListener('click', () => { exportHistory('csv').catch((e) => toast(e.message, 'error')); });
+  container.querySelector('#btn-export-json').addEventListener('click', () => { exportHistory('json').catch((e) => toast(e.message, 'error')); });
   container.querySelector('#btn-clear').addEventListener('click', async () => {
     const ok = await confirmDialog('Delete all email history records? This cannot be undone.', { title: 'Clear history', confirmLabel: 'Clear all', danger: true });
     if (!ok) return;

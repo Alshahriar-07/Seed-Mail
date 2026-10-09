@@ -77,7 +77,10 @@ export async function render(container) {
         <div class="kv"><span>Email</span><span>${escapeHtml(smtp.sender_email || '—')}</span></div>
         <div class="kv"><span>Host</span><span>${escapeHtml(smtp.host || '—')}</span></div>
         <div class="kv"><span>Port</span><span>${escapeHtml(String(smtp.port || '—'))}</span></div>
-        <div class="kv"><span>App Password</span><span>${smtp.has_password ? 'Configured' : 'Not set'}</span></div>
+        <div class="kv"><span>Send worker</span><span>${smtp.worker_available ? 'Running' : 'Not running'}</span></div>
+        <div class="kv"><span>App Password</span><span>${smtp.has_password ? 'Configured (worker)' : 'Not set'}</span></div>
+        ${smtp.worker_available ? '' : `<div class="notice notice-warning" style="margin-top:12px;">${icon('triangle-alert', 16)}
+          <span>Emails are sent by the local worker. Start it with <code>python worker/main.py</code> to send campaigns.</span></div>`}
         <div style="margin-top:14px;"><button class="btn btn-secondary btn-block" data-goto-settings>${icon('settings-2', 15)} Open Settings</button></div>
       </div>
     </div>
