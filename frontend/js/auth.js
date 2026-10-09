@@ -254,6 +254,23 @@ function shell(route, bodyHtml, { footer = '' } = {}) {
     </div>`;
 }
 
+/**
+ * Sign In / Create Account / Forgot Password links, always present on the
+ * authentication screens so every flow is reachable by mouse and keyboard.
+ * The current screen is marked with `aria-current`.
+ */
+function authNav(active) {
+  const links = [
+    { route: 'login', label: 'Sign in' },
+    { route: 'signup', label: 'Create account' },
+    { route: 'forgot', label: 'Forgot password' },
+  ];
+  return `<nav class="auth-nav" aria-label="Authentication">${links
+    .map(({ route, label }) =>
+      `<a href="#/${route}" data-auth-link="${route}"${route === active ? ' aria-current="page"' : ''}>${escapeHtml(label)}</a>`)
+    .join('')}</nav>`;
+}
+
 function unconfiguredCard() {
   return `
     <div class="auth-card">
@@ -321,12 +338,7 @@ function renderLogin(container, urlError) {
       ${fieldHtml({ id: 'password', label: 'Password', type: 'password', autocomplete: 'current-password' })}
       <button class="btn btn-primary btn-block" type="submit" id="auth-submit">${icon('log-in', 16)} Sign in</button>
     </form>`,
-    {
-      footer: `<div class="auth-links">
-        <a href="#/forgot" data-auth-link="forgot">Forgot password?</a>
-        <span>No account? <a href="#/signup" data-auth-link="signup">Create one</a></span>
-      </div>`,
-    },
+    { footer: authNav('login') },
   );
   refreshIcons(container);
   if (urlError) showError(container, urlError);
@@ -363,11 +375,7 @@ function renderSignup(container, urlError) {
       })}
       <button class="btn btn-primary btn-block" type="submit" id="auth-submit">${icon('user-plus', 16)} Create account</button>
     </form>`,
-    {
-      footer: `<div class="auth-links">
-        <span>Already have an account? <a href="#/login" data-auth-link="login">Sign in</a></span>
-      </div>`,
-    },
+    { footer: authNav('signup') },
   );
   refreshIcons(container);
   if (urlError) showError(container, urlError);
@@ -435,7 +443,7 @@ function renderForgot(container, urlError) {
       ${fieldHtml({ id: 'email', label: 'Email address', type: 'email', autocomplete: 'email' })}
       <button class="btn btn-primary btn-block" type="submit" id="auth-submit">${icon('send', 16)} Email reset link</button>
     </form>`,
-    { footer: `<div class="auth-links"><span><a href="#/login" data-auth-link="login">Back to sign in</a></span></div>` },
+    { footer: authNav('forgot') },
   );
   refreshIcons(container);
   if (urlError) showError(container, urlError);

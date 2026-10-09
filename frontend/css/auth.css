@@ -23,70 +23,55 @@
   color: var(--black);
 }
 
+/* One centered column. The signed-out view *is* the authentication page: no
+   second panel, and never any application content beside the form. */
 .auth-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  place-items: center;
   min-height: 100vh;
-  background: var(--page-bg);
+  padding: 40px 20px;
+  background: var(--white);
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
 }
 
 .auth-brand {
-  padding: 64px 56px;
-  background: var(--white);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 18px;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
 }
 
-.brand-lg .brand-mark { width: 44px; height: 44px; }
-.brand-lg .brand-name { font-size: 17px; }
+.brand-mark-lg { width: 48px; height: 48px; border-radius: 14px; }
 
-.auth-brand h1 {
-  font-size: 32px;
-  line-height: 1.2;
-  max-width: 22ch;
+.auth-brand-name { font-size: 22px; letter-spacing: -0.02em; }
+
+.auth-tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .auth-lede {
+  margin: 8px 0 0;
   color: var(--muted);
-  font-size: 15px;
-  max-width: 56ch;
-}
-
-.auth-points {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 12px;
-  max-width: 60ch;
-}
-.auth-points li {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
   font-size: 13.5px;
-  color: var(--black);
-}
-.auth-points li i { color: var(--muted); margin-top: 2px; flex: none; }
-.auth-points code {
-  font-family: var(--mono);
-  background: var(--surface-2);
-  border-radius: 4px;
-  padding: 1px 4px;
-  font-size: 12px;
+  max-width: 46ch;
 }
 
-.auth-footnote { color: var(--muted-2); font-size: 12px; margin-top: 8px; }
+.auth-footnote { color: var(--muted-2); font-size: 12px; text-align: center; margin: 0; }
 
-.auth-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 32px;
-}
+.auth-panel { display: flex; justify-content: center; }
 
 .auth-card {
   width: 100%;
@@ -114,16 +99,31 @@
   color: var(--muted);
 }
 .auth-links a { color: var(--black); text-decoration: underline; }
+
+/* Sign in / Create account / Forgot password are always reachable from the
+   authentication page, with the current screen marked. */
+.auth-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin-top: 18px;
+  font-size: 12.5px;
+}
+.auth-nav a { color: var(--muted); text-decoration: underline; }
+.auth-nav a[aria-current="page"] { color: var(--black); font-weight: 600; text-decoration: none; }
+
+.auth-nav a:focus-visible,
 .auth-links a:focus-visible,
 .auth-card a:focus-visible { outline: 2px solid var(--black); outline-offset: 2px; border-radius: 4px; }
 
 .auth-card .notice { margin-bottom: 16px; font-size: 12.5px; }
 
-@media (max-width: 900px) {
-  .auth-layout { grid-template-columns: 1fr; }
-  .auth-brand { border-right: none; border-bottom: 1px solid var(--border); padding: 40px 24px; }
-  .auth-brand h1 { font-size: 26px; }
-  .auth-panel { padding: 32px 20px 56px; }
+@media (max-width: 520px) {
+  .auth-layout { padding: 28px 16px; }
+  .auth-shell { gap: 18px; }
+  .auth-card { padding: 22px 18px; }
+  .auth-brand-name { font-size: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -595,18 +595,34 @@ def clear_history() -> dict[str, int]:
 # Frontend static files (mounted last so /api takes precedence)
 # ---------------------------------------------------------------------------
 #
-# The browser application is now built by Vite (`npm run build` -> ./dist) and
-# served as a static site (on Vercel, and locally here). When a build exists it
-# takes precedence over the raw sources, because the sources rely on Vite to
-# inline the public VITE_* configuration.
+# The browser application is built by Vite (`npm run build` -> ./dist) and served
+# as a static site — on Vercel and, locally, by this module. Serving the raw
+# `frontend/` sources is NOT supported: they rely on Vite to inline the public
+# VITE_* configuration, so an unbundled copy would fail in the browser. When no
+# build is present we say so plainly rather than serving a page that cannot work.
 
 _DIST_DIR = storage.BASE_DIR / "dist"
-FRONTEND_DIR = _DIST_DIR if (_DIST_DIR / "index.html").exists() else storage.FRONTEND_DIR
+_PUBLIC_DIR = storage.FRONTEND_DIR / "public"
+_BUILD_READY = (_DIST_DIR / "index.html").exists()
 
-if FRONTEND_DIR.exists():
-    # A single mount serves index.html, the bundled assets, and the public
-    # files (robots.txt, sitemap.xml, favicon.svg, og-image.png).
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+if _BUILD_READY:
+    # A single mount serves index.html, the bundled assets, and the public files
+    # (robots.txt, sitemap.xml, favicon.svg, og-image.png).
+    app.mount("/", StaticFiles(directory=_DIST_DIR, html=True), name="frontend")
+else:
+    @app.get("/")
+    def build_required():
+        return PlainTextResponse(
+            "Seed Code Mail has not been built yet.\n\n"
+            "Run these two commands in the project folder, then reload:\n\n"
+            "    npm install\n    npm run build\n\n"
+            "(start.bat performs this automatically on first launch.)\n",
+            status_code=503,
+        )
+
+    # Keep the genuinely static public files available even before a build.
+    if _PUBLIC_DIR.exists():
+        app.mount("/", StaticFiles(directory=_PUBLIC_DIR), name="public-fallback")
 
 
 def run() -> None:

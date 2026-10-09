@@ -1,7 +1,7 @@
 // Seed Code Mail — application shell, auth gate and router
 
 import { api } from './api.js';
-import { refreshIcons, escapeHtml, confirmDialog, toast } from './ui.js';
+import { refreshIcons, escapeHtml, confirmDialog, toast, icon } from './ui.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { requestPersistence } from './lib/templates-store.js';
 import {
@@ -37,6 +37,10 @@ const shell = document.querySelector('.app-shell') || appShell;
 const nav = document.getElementById('nav');
 const robotsMeta = document.querySelector('meta[name="robots"]');
 const skipLink = document.getElementById('skip-link');
+const menuToggle = document.getElementById('menu-toggle');
+const navClose = document.getElementById('nav-close');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const sidebarScrim = document.getElementById('sidebar-scrim');
 
 let cleanup = null;
 let signedIn = false;
@@ -83,6 +87,14 @@ function setIndexable(indexable) {
 
 function showAuthScreen() {
   signedIn = false;
+  // Drop any private view (and its timers/listeners) before revealing the
+  // authentication page: authentication is enforced here, not just by CSS.
+  if (typeof cleanup === 'function') {
+    try { cleanup(); } catch (_) { /* ignore */ }
+    cleanup = null;
+  }
+  view.innerHTML = '';
+  closeSidebar();
   appShell.hidden = true;
   authRoot.hidden = false;
   if (skipLink) skipLink.hidden = true;
@@ -98,10 +110,17 @@ function showApplication() {
   setIndexable(false);
 }
 
+const AUTH_TITLES = {
+  login: 'Sign in', signup: 'Create account', forgot: 'Reset password',
+  'update-password': 'Choose a new password', verify: 'Confirm your email',
+};
+
 async function renderAuthRoute() {
   showAuthScreen();
   const name = normaliseAuthRoute(location.hash);
-  titleEl.textContent = 'Sign in';
+  const title = AUTH_TITLES[name] || 'Sign in';
+  titleEl.textContent = title;
+  document.title = `${title} · Seed Code Mail`;
   await renderAuth(authPanel, name || 'login');
   refreshIcons(document);
   if (authPanel) authPanel.focus({ preventScroll: true });
@@ -181,7 +200,10 @@ async function renderAppRoute() {
   const route = routes[name];
 
   nav.querySelectorAll('.nav-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.route === name);
+    const isActive = item.dataset.route === name;
+    item.classList.toggle('active', isActive);
+    if (isActive) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   });
   titleEl.textContent = route.title;
   document.title = `${route.title} · Seed Code Mail`;
@@ -213,14 +235,95 @@ async function renderAppRoute() {
   closeSidebar();
 }
 
-// --- Mobile sidebar --------------------------------------------------------
+// --- Sidebar: mobile drawer ------------------------------------------------
 
-function closeSidebar() { shell.classList.remove('sidebar-open'); }
+const mobileQuery = window.matchMedia('(max-width: 900px)');
 
-document.getElementById('menu-toggle').addEventListener('click', () => {
-  shell.classList.toggle('sidebar-open');
+function drawerIsOpen() { return shell.classList.contains('sidebar-open'); }
+
+function openSidebar() {
+  if (!mobileQuery.matches) return;
+  shell.classList.add('sidebar-open');
+  if (menuToggle) {
+    menuToggle.setAttribute('aria-expanded', 'true');
+    menuToggle.setAttribute('aria-label', 'Close navigation');
+  }
+  // Move focus into the drawer so keyboard users are not left behind it.
+  if (navClose) navClose.focus({ preventScroll: true });
+}
+
+function closeSidebar({ restoreFocus = false } = {}) {
+  if (!drawerIsOpen()) return;
+  shell.classList.remove('sidebar-open');
+  if (menuToggle) {
+    menuToggle.setAttribute('aria-expanded', 'false');
+    menuToggle.setAttribute('aria-label', 'Open navigation');
+  }
+  if (restoreFocus) menuToggle?.focus({ preventScroll: true });
+}
+
+menuToggle?.addEventListener('click', () => {
+  if (drawerIsOpen()) closeSidebar({ restoreFocus: true });
+  else openSidebar();
 });
-document.getElementById('sidebar-scrim').addEventListener('click', closeSidebar);
+navClose?.addEventListener('click', () => closeSidebar({ restoreFocus: true }));
+sidebarScrim?.addEventListener('click', () => closeSidebar({ restoreFocus: true }));
+
+// Escape always dismisses the drawer, from anywhere in the application.
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && drawerIsOpen()) closeSidebar({ restoreFocus: true });
+});
+
+// Leaving mobile widths closes the drawer so its backdrop cannot get stuck.
+mobileQuery.addEventListener('change', (event) => { if (!event.matches) closeSidebar(); });
+
+// --- Sidebar: desktop collapse / expand ------------------------------------
+
+const SIDEBAR_PREF_KEY = 'seedmail.sidebar-collapsed';
+
+function readSidebarPreference() {
+  try {
+    return localStorage.getItem(SIDEBAR_PREF_KEY) === '1';
+  } catch (_) {
+    // Storage can be unavailable (private mode, blocked cookies): fall back to
+    // the expanded sidebar instead of failing to boot.
+    return false;
+  }
+}
+
+function saveSidebarPreference(collapsed) {
+  try {
+    localStorage.setItem(SIDEBAR_PREF_KEY, collapsed ? '1' : '0');
+  } catch (_) { /* preference is a nicety, never a requirement */ }
+}
+
+/**
+ * Applies the collapsed/expanded state to the shell and keeps the toggle's
+ * label, icon and the icon-only navigation tooltips in sync.
+ */
+function applySidebarCollapsed(collapsed, { persist = true } = {}) {
+  shell.classList.toggle('is-collapsed', collapsed);
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  if (sidebarToggle) {
+    sidebarToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    sidebarToggle.setAttribute('aria-label', label);
+    sidebarToggle.title = label;
+    sidebarToggle.innerHTML = icon(collapsed ? 'panel-left-open' : 'panel-left-close', 18);
+    refreshIcons(sidebarToggle);
+  }
+  // Icon-only links need a descriptive tooltip; `title` plus the visually
+  // hidden label (still read by screen readers) covers both audiences.
+  nav.querySelectorAll('.nav-item').forEach((item) => {
+    if (collapsed) item.title = item.querySelector('span')?.textContent?.trim() || '';
+    else item.removeAttribute('title');
+  });
+  if (persist) saveSidebarPreference(collapsed);
+}
+
+sidebarToggle?.addEventListener('click', () => {
+  applySidebarCollapsed(!shell.classList.contains('is-collapsed'));
+});
+
 document.getElementById('settings-shortcut').addEventListener('click', () => navigate('settings'));
 document.getElementById('smtp-indicator').addEventListener('click', () => navigate('settings'));
 document.getElementById('profile-chip').addEventListener('click', () => navigate('settings'));
@@ -272,12 +375,18 @@ async function applyAuthState() {
 
 async function boot() {
   refreshIcons(document);
+  // Restore the saved sidebar preference before the shell is ever revealed.
+  applySidebarCollapsed(readSidebarPreference(), { persist: false });
+  closeSidebar();
 
   if (!supabaseConfigured) {
     await renderAuthRoute();
     return;
   }
 
+  // `#auth-panel` still shows its "Checking your session…" placeholder here:
+  // the application shell is only revealed once Supabase confirms a session,
+  // so no dashboard content can flash before authentication is resolved.
   await bootstrapAuth();
 
   onAuthChange(async (event) => {

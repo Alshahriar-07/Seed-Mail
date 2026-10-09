@@ -466,7 +466,9 @@ logging.
 6. **`user_settings` holds non-secret preferences only**, so an SMTP host/port
    set in Settings is passed to the worker per campaign; the worker's `.env`
    still supplies the default and always supplies the password.
-7. **Legacy JSON stores remain on disk** (`data/*.json`, `data.json`) from the
-   previous version. They are no longer read by the hosted app and are kept so
-   nothing is lost; historical recipients/history can be imported through the
-   normal CSV/JSON import.
+7. **Legacy JSON stores remain on disk** (`data/*.json`) from the previous
+   version. They are still read by the retained local application (`app.py`) and
+   hold existing recipients, campaigns, history and the saved template, so they
+   are deliberately kept rather than deleted. The hosted app does not read them;
+   historical recipients/history can also be imported into a Supabase account
+   through the normal CSV/JSON import.

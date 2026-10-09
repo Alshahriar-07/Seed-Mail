@@ -64,7 +64,9 @@ table.data tbody tr:nth-child(5) { animation-delay: 0.12s; }
 .nav-item.active { transform: translateX(2px); }
 .nav-item.active::before { transition: height 0.2s var(--ease), opacity 0.2s var(--ease); }
 
-.sidebar { transition: transform 0.28s var(--ease), box-shadow 0.28s var(--ease); }
+/* Width (desktop collapse) and transform (mobile drawer) are both driven from
+   here so the two presentations cannot fight over the same property. */
+.sidebar { transition: width 0.24s var(--ease), transform 0.28s var(--ease), visibility 0.28s var(--ease), box-shadow 0.28s var(--ease); }
 .sidebar-scrim { transition: opacity 0.24s var(--ease); }
 
 /* --- Buttons ---------------------------------------------------------------- */
@@ -136,4 +138,6 @@ textarea:focus-visible,
   table.data tbody tr { animation: none; }
   .nav-item.active { transform: none; }
   .preview-viewport { transition: none; }
+  .app-shell,
+  .sidebar { transition: none; }
 }
