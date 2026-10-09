@@ -1,0 +1,104 @@
+{
+  "templates": [
+    {
+      "id": "tpl_7586505ef9e6",
+      "name": "UI Check Template",
+      "description": "",
+      "html": "<!DOCTYPE html><html><body><h2>Hello {{COMPANY_NAME}},</h2><p>{{NOPE}}</p><img src=\"C:\\logo.png\"></body></html>",
+      "design": {
+        "email_bg": "#F7F7F7",
+        "container_bg": "#FFFFFF",
+        "primary_text": "#111111",
+        "secondary_text": "#444444",
+        "muted_text": "#737373",
+        "accent": "#111111",
+        "font_family": "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "font_size": "16px",
+        "container_width": "600px",
+        "border_radius": "12px",
+        "logo_url": "",
+        "button_label": "Learn more",
+        "button_bg": "#111111",
+        "footer_text": ""
+      },
+      "is_default": true,
+      "created_at": "2026-10-09T09:43:51+00:00",
+      "updated_at": "2026-10-09T09:43:51+00:00"
+    },
+    {
+      "id": "tpl_1c0a08e4bea6",
+      "name": "UI Check Template",
+      "description": "",
+      "html": "<!DOCTYPE html><html><body><h2>Hello {{COMPANY_NAME}},</h2><p>{{NOPE}}</p><img src=\"C:\\logo.png\"></body></html>",
+      "design": {
+        "email_bg": "#F7F7F7",
+        "container_bg": "#FFFFFF",
+        "primary_text": "#111111",
+        "secondary_text": "#444444",
+        "muted_text": "#737373",
+        "accent": "#111111",
+        "font_family": "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "font_size": "16px",
+        "container_width": "600px",
+        "border_radius": "12px",
+        "logo_url": "",
+        "button_label": "Learn more",
+        "button_bg": "#111111",
+        "footer_text": ""
+      },
+      "is_default": false,
+      "created_at": "2026-10-09T09:45:00+00:00",
+      "updated_at": "2026-10-09T09:45:00+00:00"
+    },
+    {
+      "id": "tpl_00e65827c231",
+      "name": "Seed Code Acquisition Proposal",
+      "description": "",
+      "html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<meta name=\"color-scheme\" content=\"dark\">\n<title>Strategic Acquisition Proposal - Seed Code</title>\n</head>\n<body style=\"margin:0;padding:0;background-color:#05080a;font-family:Arial,Helvetica,sans-serif;color:#cbd5d1;line-height:1.7;\">\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background-color:#05080a;\">\n<tr><td align=\"center\" style=\"padding:28px 12px;\">\n\n<table role=\"presentation\" width=\"640\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;max-width:640px;background-color:#0b1210;border:1px solid #1c2a25;border-radius:12px;\">\n\n  <!-- Top bar: icon + GitHub button -->\n  <tr><td style=\"padding:16px 24px;border-bottom:1px solid #1c2a25;background-color:#0e1814;border-radius:12px 12px 0 0;\">\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n      <tr>\n        <td valign=\"middle\" align=\"left\">\n          <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n            <tr>\n              <td valign=\"middle\" style=\"padding-right:12px;\">\n                <img src=\"https://raw.githubusercontent.com/Alshahriar-07/SeedCode-app/refs/heads/main/assets/icon.png\" width=\"40\" height=\"40\" alt=\"Seed Code\" style=\"display:block;width:40px;height:40px;border-radius:9px;border:0;\">\n              </td>\n              <td valign=\"middle\" style=\"font-size:17px;font-weight:bold;color:#f0fdf4;\">Seed Code</td>\n            </tr>\n          </table>\n        </td>\n        <td valign=\"middle\" align=\"right\">\n          <a href=\"https://github.com/Alshahriar-07\" style=\"display:inline-block;padding:9px 18px;border:1px solid #22c55e;border-radius:8px;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:bold;color:#4ade80;text-decoration:none;\">GitHub &#8599;</a>\n        </td>\n      </tr>\n    </table>\n  </td></tr>\n\n  <!-- Header -->\n  <tr><td style=\"padding:36px 32px 28px;\">\n    <p style=\"margin:0 0 10px;font-family:'Courier New',Courier,monospace;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:#22c55e;\">&gt; proposal --acquisition</p>\n    <h1 style=\"margin:0;font-size:28px;line-height:1.25;font-weight:700;color:#f0fdf4;\">Strategic Acquisition Proposal</h1>\n    <p style=\"margin:12px 0 0;font-size:15px;color:#8aa399;\">Seed Code Chat &amp; Seed Code CLI</p>\n    <p style=\"margin:16px 0 0;font-family:'Courier New',Courier,monospace;font-size:13px;color:#22c55e;\">Build. Learn. Create.</p>\n  </td></tr>\n\n  <!-- Body -->\n  <tr><td style=\"padding:0 32px 8px;font-size:15px;\">\n\n    Dear <strong style=\"color:#f0fdf4;\">{{COMPANY_NAME}} Corporate Development Team</strong>,\n\n    <p style=\"margin:0 0 16px;\">My name is <strong style=\"color:#f0fdf4;\">Al Shahriar Sowan</strong>, a software developer from Bangladesh and the sole creator and owner of Seed Code Chat and Seed Code CLI.</p>\n\n    <p style=\"margin:0 0 8px;\">I am reaching out to explore a potential strategic acquisition of both products. I am open to transferring the source code and associated intellectual property rights, subject to ownership, licensing and third-party dependency review.</p>\n\n    <!-- 01 Problem -->\n    <p style=\"margin:34px 0 4px;font-family:'Courier New',Courier,monospace;font-size:12px;color:#22c55e;letter-spacing:2px;\">01 /</p>\n    <h2 style=\"margin:0 0 12px;font-size:20px;color:#f0fdf4;\">The Problem We Solve</h2>\n    <p style=\"margin:0 0 14px;\">Working with AI today is fragmented. Every provider has its own app, its own interface and its own limits, so developers and everyday users end up switching between tools, accounts and tabs just to get answers. For developers, AI coding help often lives in a separate chat window, away from the files and terminal where the real work happens.</p>\n\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background-color:#0e1814;border:1px solid #1c2a25;border-left:3px solid #22c55e;border-radius:8px;\">\n      <tr><td style=\"padding:14px 18px;font-size:14px;line-height:1.8;color:#cbd5d1;\">\n        <strong style=\"color:#f0fdf4;\">Seed Code Chat</strong> removes the app-switching by putting supported AI providers and models behind one interface.<br>\n        <strong style=\"color:#f0fdf4;\">Seed Code CLI</strong> brings AI-assisted coding into the developer's own workspace, so the assistant can work with files and project context instead of copy-and-paste.\n      </td></tr>\n    </table>\n\n    <!-- 02 Chat -->\n    <p style=\"margin:34px 0 4px;font-family:'Courier New',Courier,monospace;font-size:12px;color:#22c55e;letter-spacing:2px;\">02 /</p>\n    <h2 style=\"margin:0 0 12px;font-size:20px;color:#f0fdf4;\">Seed Code Chat</h2>\n    <p style=\"margin:0 0 16px;\">Seed Code Chat is a flexible AI chat application designed to provide a unified interface for supported AI providers and models. Its features include provider and model selection, multimodal interaction, voice functionality and web-assisted responses.</p>\n\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n      <tr>\n        <td width=\"50%\" valign=\"top\" style=\"padding:0 6px 8px 0;\">\n          <a href=\"https://seedcode-chat.vercel.app/\" style=\"display:block;text-decoration:none;background-color:#0e1814;border:1px solid #1c2a25;border-left:3px solid #22c55e;border-radius:8px;padding:12px 14px;\">\n            <span style=\"display:block;font-family:'Courier New',Courier,monospace;font-size:11px;color:#5f7a70;text-transform:uppercase;letter-spacing:1px;\">Web App</span>\n            <span style=\"display:block;font-size:13px;color:#4ade80;margin-top:2px;\">seedcode-chat.vercel.app &rarr;</span>\n          </a>\n        </td>\n        <td width=\"50%\" valign=\"top\" style=\"padding:0 0 8px 6px;\">\n          <a href=\"https://seedcode-app.vercel.app/\" style=\"display:block;text-decoration:none;background-color:#0e1814;border:1px solid #1c2a25;border-left:3px solid #22c55e;border-radius:8px;padding:12px 14px;\">\n            <span style=\"display:block;font-family:'Courier New',Courier,monospace;font-size:11px;color:#5f7a70;text-transform:uppercase;letter-spacing:1px;\">Android App</span>\n            <span style=\"display:block;font-size:13px;color:#4ade80;margin-top:2px;\">seedcode-app.vercel.app &rarr;</span>\n          </a>\n        </td>\n      </tr>\n    </table>\n\n    <!-- 03 CLI -->\n    <p style=\"margin:34px 0 4px;font-family:'Courier New',Courier,monospace;font-size:12px;color:#22c55e;letter-spacing:2px;\">03 /</p>\n    <h2 style=\"margin:0 0 12px;font-size:20px;color:#f0fdf4;\">Seed Code CLI</h2>\n    <p style=\"margin:0 0 16px;\">Seed Code CLI is an AI-powered developer tool built around a harness-based agent workflow. Its intended capabilities include AI-assisted coding, workspace operations, file management and integration with supported AI providers and models.</p>\n\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n      <tr>\n        <td width=\"50%\" valign=\"top\" style=\"padding:0 6px 8px 0;\">\n          <a href=\"https://seedcode-cli.vercel.app/\" style=\"display:block;text-decoration:none;background-color:#0e1814;border:1px solid #1c2a25;border-left:3px solid #22c55e;border-radius:8px;padding:12px 14px;\">\n            <span style=\"display:block;font-family:'Courier New',Courier,monospace;font-size:11px;color:#5f7a70;text-transform:uppercase;letter-spacing:1px;\">Product Website</span>\n            <span style=\"display:block;font-size:13px;color:#4ade80;margin-top:2px;\">seedcode-cli.vercel.app &rarr;</span>\n          </a>\n        </td>\n        <td width=\"50%\" valign=\"top\" style=\"padding:0 0 8px 6px;\">\n          <a href=\"https://seedcode-web.vercel.app/\" style=\"display:block;text-decoration:none;background-color:#0e1814;border:1px solid #1c2a25;border-left:3px solid #22c55e;border-radius:8px;padding:12px 14px;\">\n            <span style=\"display:block;font-family:'Courier New',Courier,monospace;font-size:11px;color:#5f7a70;text-transform:uppercase;letter-spacing:1px;\">Web Interface</span>\n            <span style=\"display:block;font-size:13px;color:#4ade80;margin-top:2px;\">seedcode-web.vercel.app &rarr;</span>\n          </a>\n        </td>\n      </tr>\n    </table>\n\n    <!-- 04 Opportunity -->\n    <p style=\"margin:34px 0 4px;font-family:'Courier New',Courier,monospace;font-size:12px;color:#22c55e;letter-spacing:2px;\">04 /</p>\n    <h2 style=\"margin:0 0 12px;font-size:20px;color:#f0fdf4;\">Acquisition Opportunity</h2>\n    <p style=\"margin:0 0 12px;\">I am seeking to sell both products as a combined technology portfolio. Depending on the agreed terms and the outcome of due diligence, the transaction could include:</p>\n\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background-color:#0e1814;border:1px solid #1c2a25;border-radius:8px;\">\n      <tr><td style=\"padding:14px 18px;font-family:'Courier New',Courier,monospace;font-size:13px;line-height:2;color:#cbd5d1;\">\n        <span style=\"color:#22c55e;\">+</span> Source code and relevant development assets<br>\n        <span style=\"color:#22c55e;\">+</span> Transferable intellectual property rights<br>\n        <span style=\"color:#22c55e;\">+</span> Product names, branding and associated assets<br>\n        <span style=\"color:#22c55e;\">+</span> Technical documentation and project materials\n      </td></tr>\n    </table>\n\n    <p style=\"margin:16px 0;\">I believe the portfolio may be relevant to a company seeking to expand its AI application ecosystem, developer tooling or multi-provider AI capabilities.</p>\n\n    <p style=\"margin:0 0 16px;\">I would welcome the opportunity to provide a product demonstration, technical overview and further information for your evaluation.</p>\n\n    <p style=\"margin:0 0 16px;\">If this opportunity aligns with your company's strategic priorities, could you please direct me to the appropriate person or team responsible for software acquisitions, corporate development or strategic technology investments?</p>\n\n    <!-- CTA -->\n    <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:22px 0 22px;\">\n      <tr><td style=\"background-color:#22c55e;border-radius:8px;\">\n        <a href=\"mailto:alshahriarsowan425@gmail.com?subject=Seed%20Code%20Acquisition%20Inquiry\" style=\"display:inline-block;padding:13px 24px;font-size:14px;font-weight:bold;color:#05140a;text-decoration:none;\">Start the conversation &rarr;</a>\n      </td></tr>\n    </table>\n\n    <p style=\"margin:0 0 28px;\">Thank you for your time and consideration. I look forward to the possibility of discussing a potential fit.</p>\n  </td></tr>\n\n  <!-- Signature -->\n  <tr><td style=\"padding:0 32px 32px;\">\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"border-top:1px solid #1c2a25;\">\n      <tr><td style=\"padding-top:22px;\">\n        <p style=\"margin:0;font-size:17px;font-weight:bold;color:#f0fdf4;\">Al Shahriar Sowan</p>\n        <p style=\"margin:3px 0 0;font-size:13px;color:#8aa399;\">Creator &amp; Owner, Seed Code Chat &amp; Seed Code CLI</p>\n        <p style=\"margin:10px 0 0;font-family:'Courier New',Courier,monospace;font-size:13px;color:#8aa399;\">\n          <span style=\"color:#22c55e;\">&gt;</span> <a href=\"mailto:alshahriarsowan425@gmail.com\" style=\"color:#4ade80;text-decoration:none;\">alshahriarsowan425@gmail.com</a><br>\n          <span style=\"color:#22c55e;\">&gt;</span> <a href=\"https://github.com/Alshahriar-07\" style=\"color:#4ade80;text-decoration:none;\">github.com/Alshahriar-07</a>\n        </p>\n      </td></tr>\n    </table>\n  </td></tr>\n\n  <!-- Footer -->\n  <tr><td align=\"center\" style=\"padding:16px 32px;background-color:#080e0c;border-top:1px solid #1c2a25;border-radius:0 0 12px 12px;font-family:'Courier New',Courier,monospace;font-size:11px;color:#3f564d;\">\n    Seed Code Chat &amp; Seed Code CLI &middot; Al Shahriar Sowan\n  </td></tr>\n\n</table>\n\n</td></tr>\n</table>\n</body>\n</html>",
+      "design": {
+        "email_bg": "#F7F7F7",
+        "container_bg": "#FFFFFF",
+        "primary_text": "#111111",
+        "secondary_text": "#444444",
+        "muted_text": "#737373",
+        "accent": "#111111",
+        "font_family": "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "font_size": "16px",
+        "container_width": "600px",
+        "border_radius": "12px",
+        "logo_url": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='96' height='96' rx='20' fill='%23111111'/><text x='48' y='62' font-family='Arial' font-size='44' font-weight='bold' fill='%23ffffff' text-anchor='middle'>SC</text></svg>",
+        "button_label": "View on GitHub",
+        "button_bg": "#111111",
+        "footer_text": "Sent by Seed Code regarding a strategic acquisition proposal. If this message reached you in error, please disregard it."
+      },
+      "is_default": false,
+      "created_at": "2026-10-09T09:46:33+00:00",
+      "updated_at": "2026-10-09T09:46:33+00:00"
+    },
+    {
+      "id": "tpl_54cdb04b9d41",
+      "name": "UI Check Template",
+      "description": "",
+      "html": "<!DOCTYPE html><html><body><h2>Hello {{COMPANY_NAME}},</h2><p>{{NOPE}}</p><img src=\"C:\\logo.png\"></body></html>",
+      "design": {
+        "email_bg": "#F7F7F7",
+        "container_bg": "#FFFFFF",
+        "primary_text": "#111111",
+        "secondary_text": "#444444",
+        "muted_text": "#737373",
+        "accent": "#111111",
+        "font_family": "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        "font_size": "16px",
+        "container_width": "600px",
+        "border_radius": "12px",
+        "logo_url": "",
+        "button_label": "Learn more",
+        "button_bg": "#111111",
+        "footer_text": ""
+      },
+      "is_default": false,
+      "created_at": "2026-10-09T09:47:27+00:00",
+      "updated_at": "2026-10-09T09:47:27+00:00"
+    }
+  ]
+}

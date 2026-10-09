@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>{{SUBJECT}}</title>
+</head>
+<body style="margin:0; padding:0; background-color:{{D_EMAIL_BG}}; font-family:{{D_FONT_FAMILY}}; -webkit-font-smoothing:antialiased;">
+
+  <!-- Preheader (hidden preview text) -->
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:{{D_EMAIL_BG}};">
+    A strategic acquisition proposal from {{SENDER_NAME}} regarding Seed Code Chat and Seed Code CLI.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{D_EMAIL_BG}};">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+
+        <table role="presentation" width="{{D_CONTAINER_WIDTH}}" cellpadding="0" cellspacing="0" border="0"
+               style="width:{{D_CONTAINER_WIDTH}}; max-width:{{D_CONTAINER_WIDTH}}; background-color:{{D_CONTAINER_BG}}; border:1px solid #E5E5E5; border-radius:{{D_BORDER_RADIUS}}; overflow:hidden;">
+
+          <!-- Header / brand -->
+          <tr>
+            <td style="padding:36px 40px 20px 40px; border-bottom:1px solid #F0F0F0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="left" valign="middle">
+                    <img src="{{D_LOGO_URL}}" alt="Seed Code" width="44" height="44"
+                         style="display:block; width:44px; height:44px; border-radius:10px; background-color:{{D_ACCENT}};">
+                  </td>
+                  <td align="right" valign="middle" style="text-align:right;">
+                    <span style="font-size:20px; font-weight:700; letter-spacing:-0.02em; color:{{D_PRIMARY_TEXT}};">Seed Code</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px 8px 40px;">
+              <p style="margin:0 0 20px 0; font-size:{{D_FONT_SIZE}}; line-height:1.65; color:{{D_PRIMARY_TEXT}};">
+                Dear {{COMPANY_NAME}} Corporate Development Team,
+              </p>
+
+              <p style="margin:0 0 20px 0; font-size:{{D_FONT_SIZE}}; line-height:1.65; color:{{D_SECONDARY_TEXT}};">
+                My name is {{SENDER_NAME}}, a software developer from Bangladesh and the creator and owner of
+                <strong style="color:{{D_PRIMARY_TEXT}};">Seed Code Chat</strong> and
+                <strong style="color:{{D_PRIMARY_TEXT}};">Seed Code CLI</strong>.
+              </p>
+
+              <p style="margin:0 0 28px 0; font-size:{{D_FONT_SIZE}}; line-height:1.65; color:{{D_SECONDARY_TEXT}};">
+                I am reaching out to explore a potential strategic acquisition of both products, subject to
+                ownership, licensing and third-party dependency review.
+              </p>
+
+              <!-- Product cards -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;">
+                <tr>
+                  <td width="50%" valign="top" style="padding-right:8px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                           style="background-color:#FAFAFA; border:1px solid #E5E5E5; border-radius:{{D_BORDER_RADIUS}};">
+                      <tr><td style="padding:20px;">
+                        <p style="margin:0 0 8px 0; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{{D_ACCENT}};">Seed Code Chat</p>
+                        <p style="margin:0 0 12px 0; font-size:13px; line-height:1.5; color:{{D_SECONDARY_TEXT}};">Real-time AI chat product.</p>
+                        <p style="margin:0; font-size:13px; line-height:1.8;">
+                          <a href="https://seedcode-chat.vercel.app/" style="color:{{D_PRIMARY_TEXT}}; text-decoration:underline;">seedcode-chat</a><br>
+                          <a href="https://seedcode-app.vercel.app/" style="color:{{D_PRIMARY_TEXT}}; text-decoration:underline;">seedcode-app</a>
+                        </p>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <td width="50%" valign="top" style="padding-left:8px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                           style="background-color:#FAFAFA; border:1px solid #E5E5E5; border-radius:{{D_BORDER_RADIUS}};">
+                      <tr><td style="padding:20px;">
+                        <p style="margin:0 0 8px 0; font-size:13px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:{{D_ACCENT}};">Seed Code CLI</p>
+                        <p style="margin:0 0 12px 0; font-size:13px; line-height:1.5; color:{{D_SECONDARY_TEXT}};">Developer command-line tooling.</p>
+                        <p style="margin:0; font-size:13px; line-height:1.8;">
+                          <a href="https://seedcode-cli.vercel.app/" style="color:{{D_PRIMARY_TEXT}}; text-decoration:underline;">seedcode-cli</a><br>
+                          <a href="https://seedcode-web.vercel.app/" style="color:{{D_PRIMARY_TEXT}}; text-decoration:underline;">seedcode-web</a>
+                        </p>
+                      </td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 28px 0; font-size:{{D_FONT_SIZE}}; line-height:1.65; color:{{D_SECONDARY_TEXT}};">
+                I would welcome the opportunity to provide a product demonstration, technical overview and
+                further information for your evaluation.
+              </p>
+
+              <!-- Call to action -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 32px 0;">
+                <tr>
+                  <td align="center" style="background-color:{{D_BUTTON_BG}}; border-radius:{{D_BORDER_RADIUS}};">
+                    <a href="{{GITHUB_URL}}" style="display:inline-block; padding:14px 28px; font-size:14px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:{{D_BORDER_RADIUS}};">{{D_BUTTON_LABEL}}</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 8px 0; font-size:{{D_FONT_SIZE}}; line-height:1.65; color:{{D_SECONDARY_TEXT}};">Best regards,</p>
+              <p style="margin:0 0 4px 0; font-size:{{D_FONT_SIZE}}; line-height:1.5; color:{{D_PRIMARY_TEXT}}; font-weight:600;">{{SENDER_NAME}}</p>
+              <p style="margin:0; font-size:14px; line-height:1.5; color:{{D_SECONDARY_TEXT}};">
+                <a href="mailto:{{SENDER_EMAIL}}" style="color:{{D_SECONDARY_TEXT}}; text-decoration:none;">{{SENDER_EMAIL}}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 40px 32px 40px; border-top:1px solid #F0F0F0;">
+              <p style="margin:0; font-size:12px; line-height:1.6; color:{{D_MUTED_TEXT}};">
+                {{D_FOOTER_TEXT}}
+              </p>
+              <p style="margin:12px 0 0 0; font-size:12px; line-height:1.6; color:{{D_MUTED_TEXT}};">
+                <a href="{{GITHUB_URL}}" style="color:{{D_ACCENT}}; text-decoration:none;">GitHub</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,0 +1,115 @@
+{
+  "campaigns": [
+    {
+      "id": "cmp_c1a8e691349c",
+      "name": "Test",
+      "subject": "test",
+      "template_id": "tpl_b45caa3d5a24",
+      "recipient_ids": [
+        "rcp_c7194c2970f7"
+      ],
+      "results": {
+        "rcp_c7194c2970f7": {
+          "recipient_id": "rcp_c7194c2970f7",
+          "company_name": "seedcode",
+          "email": "seedcode.ai@gmil.com",
+          "status": "sent",
+          "attempts": 1,
+          "last_error_category": "ok",
+          "last_error": "Accepted by the SMTP server.",
+          "last_attempt_at": "2026-10-09T09:10:26+00:00"
+        }
+      },
+      "status": "completed",
+      "created_at": "2026-10-09T09:10:21+00:00",
+      "updated_at": "2026-10-09T09:10:31+00:00",
+      "started_at": "2026-10-09T09:10:21+00:00",
+      "finished_at": "2026-10-09T09:10:31+00:00",
+      "current_recipient": null,
+      "interrupted": false,
+      "counters": {
+        "total": 1,
+        "processed": 1,
+        "sent": 1,
+        "failed": 0,
+        "unknown": 0,
+        "pending": 0,
+        "progress": 100.0
+      }
+    },
+    {
+      "id": "cmp_6676529c5757",
+      "name": "Test",
+      "subject": "test",
+      "template_id": "tpl_b45caa3d5a24",
+      "recipient_ids": [
+        "rcp_c7194c2970f7"
+      ],
+      "results": {
+        "rcp_c7194c2970f7": {
+          "recipient_id": "rcp_c7194c2970f7",
+          "company_name": "seedcode",
+          "email": "seedcode.ai@gmail.com",
+          "status": "sent",
+          "attempts": 1,
+          "last_error_category": "ok",
+          "last_error": "Accepted by the SMTP server.",
+          "last_attempt_at": "2026-10-09T09:13:34+00:00"
+        }
+      },
+      "status": "completed",
+      "created_at": "2026-10-09T09:13:30+00:00",
+      "updated_at": "2026-10-09T09:13:39+00:00",
+      "started_at": "2026-10-09T09:13:30+00:00",
+      "finished_at": "2026-10-09T09:13:39+00:00",
+      "current_recipient": null,
+      "interrupted": false,
+      "counters": {
+        "total": 1,
+        "processed": 1,
+        "sent": 1,
+        "failed": 0,
+        "unknown": 0,
+        "pending": 0,
+        "progress": 100.0
+      }
+    },
+    {
+      "id": "cmp_b18ab53488e4",
+      "name": "Strategic Acquisition Opportunity",
+      "subject": "Strategic Acquisition Opportunity — Seed Code Chat & Seed Code CL",
+      "template_id": "tpl_00e65827c231",
+      "recipient_ids": [
+        "rcp_c7194c2970f7"
+      ],
+      "results": {
+        "rcp_c7194c2970f7": {
+          "recipient_id": "rcp_c7194c2970f7",
+          "company_name": "seedcode",
+          "email": "seedcode.ai@gmail.com",
+          "status": "sent",
+          "attempts": 1,
+          "last_error_category": "ok",
+          "last_error": "Accepted by the SMTP server.",
+          "last_attempt_at": "2026-10-09T09:47:38+00:00"
+        }
+      },
+      "status": "completed",
+      "created_at": "2026-10-09T09:47:33+00:00",
+      "updated_at": "2026-10-09T09:47:43+00:00",
+      "started_at": "2026-10-09T09:47:33+00:00",
+      "finished_at": "2026-10-09T09:47:43+00:00",
+      "current_recipient": null,
+      "interrupted": false,
+      "counters": {
+        "total": 1,
+        "processed": 1,
+        "sent": 1,
+        "failed": 0,
+        "unknown": 0,
+        "pending": 0,
+        "progress": 100.0
+      }
+    }
+  ]
+}

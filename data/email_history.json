@@ -1,0 +1,46 @@
+{
+  "history": [
+    {
+      "id": "hist_c0a7ae133bdf",
+      "timestamp": "2026-10-09T09:10:26+00:00",
+      "campaign_id": "cmp_c1a8e691349c",
+      "campaign_name": "Test",
+      "recipient_id": "rcp_c7194c2970f7",
+      "company_name": "seedcode",
+      "email": "seedcode.ai@gmil.com",
+      "subject": "test",
+      "attempt": 1,
+      "status": "sent",
+      "error_category": "ok",
+      "error_message": "Accepted by the SMTP server."
+    },
+    {
+      "id": "hist_d7520e41ea17",
+      "timestamp": "2026-10-09T09:13:34+00:00",
+      "campaign_id": "cmp_6676529c5757",
+      "campaign_name": "Test",
+      "recipient_id": "rcp_c7194c2970f7",
+      "company_name": "seedcode",
+      "email": "seedcode.ai@gmail.com",
+      "subject": "test",
+      "attempt": 1,
+      "status": "sent",
+      "error_category": "ok",
+      "error_message": "Accepted by the SMTP server."
+    },
+    {
+      "id": "hist_1c80bbf8c265",
+      "timestamp": "2026-10-09T09:47:38+00:00",
+      "campaign_id": "cmp_b18ab53488e4",
+      "campaign_name": "Strategic Acquisition Opportunity",
+      "recipient_id": "rcp_c7194c2970f7",
+      "company_name": "seedcode",
+      "email": "seedcode.ai@gmail.com",
+      "subject": "Strategic Acquisition Opportunity — Seed Code Chat & Seed Code CL",
+      "attempt": 1,
+      "status": "sent",
+      "error_category": "ok",
+      "error_message": "Accepted by the SMTP server."
+    }
+  ]
+}

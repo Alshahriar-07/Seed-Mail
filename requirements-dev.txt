@@ -1,0 +1,2 @@
+# Optional: Windows desktop packaging via PyWebView
+pywebview>=5.0
