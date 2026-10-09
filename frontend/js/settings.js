@@ -20,8 +20,14 @@ function workerStatusLine(worker) {
   const queueOnline = queue ? Boolean(queue.consumer_online) : available;
   const waiting = Number(queue?.queued || 0);
 
+  // A URL this build cannot use is a configuration error (for example a
+  // localhost value left in the deployed environment), so it is reported as
+  // such rather than as an unreachable service.
+  if (worker.config_problem) {
+    return worker.config_problem;
+  }
   if (!configured) {
-    return 'No send worker is configured for this deployment, so campaigns stay queued. Set VITE_MAIL_WORKER_URL to the worker service URL and redeploy.';
+    return 'No send worker is configured for this deployment, so campaigns stay queued in your account. Set VITE_MAIL_WORKER_URL to the deployed worker service URL and redeploy.';
   }
   if (!available) {
     return worker.local
@@ -40,6 +46,14 @@ function field(id, label, value, { type = 'text', hint = '', wide = false } = {}
     <input class="input" id="${id}" type="${type}" value="${escapeHtml(value)}">
     ${hint ? `<div class="hint">${escapeHtml(hint)}</div>` : ''}
   </div>`;
+}
+
+function workerStateLabel(worker) {
+  if (worker?.config_problem || worker?.configured === false) return 'Not configured';
+  if (!worker?.available) return 'Not reachable';
+  const queue = worker?.queue;
+  if (queue && queue.configured === false) return 'Configured (no queue consumer)';
+  return queue?.consumer_online ? 'Online' : 'Starting';
 }
 
 function paint(data) {
@@ -63,7 +77,7 @@ function paint(data) {
         ${field('s-name', 'Sender display name', v.SENDER_NAME)}
         ${field('s-github', 'GitHub URL (optional)', v.GITHUB_URL, { hint: 'Used by the {{GITHUB_URL}} template variable. Leave blank if unused.', wide: true })}
         ${field('s-pass', 'Gmail App Password', '', { type: 'password', hint: data.has_password ? 'An App Password is configured on the send worker. Leave blank to keep it unchanged.' : 'No password configured yet. Paste your 16-character Gmail App Password — it is sent only to the worker service, never stored in the browser or the database.', wide: true })}
-        <div class="kv"><span>Send worker</span><span>${data.worker?.available ? (data.worker?.queue?.consumer_online ? 'Online' : 'Starting') : 'Not reachable'}</span></div>
+        <div class="kv"><span>Send worker</span><span>${escapeHtml(workerStateLabel(data.worker))}</span></div>
       </div>
 
       <div class="card">

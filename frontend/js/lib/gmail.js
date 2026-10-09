@@ -1,26 +1,31 @@
 // Seed Code Mail — Gmail backend client (browser side)
 //
 // The mailbox lives in Gmail and is reached through the trusted backend under
-// `/api/gmail/…` (Vercel serverless functions). This module is the only thing
-// that talks to it, so every call carries the signed-in user's Supabase access
-// token and nothing else.
+// `/api/gmail/…` (the Vercel functions in `./api`), which is normally the SAME
+// origin as this page. This module is the only thing that talks to it, so every
+// call carries the signed-in user's Supabase access token and nothing else.
 //
 // What is deliberately absent from this file:
 //   * no Google client id, no client secret, no refresh token, no access token;
-//   * no client-side token exchange.
+//   * no client-side token exchange;
+//   * no assumed or invented backend host.
 // The browser cannot hold a Gmail credential, so it never sees one — it asks the
 // server to act on its behalf and gets back ordinary mailbox data.
 //
-// Deployments where the API is not on the same origin (for example a local Vite
-// dev server pointed at the deployed functions) can set VITE_API_BASE_URL.
+// Deployment reality this module is explicit about: deploying the static site
+// does not by itself deploy the Python campaign worker, and it only serves
+// `/api/gmail` if the functions in `./api` are part of the same Vercel project.
+// When that is not the case the error says so precisely, because the difference
+// between "the functions are missing from this deployment" and "Gmail is
+// unreachable" is exactly what an operator needs to know.
 
 import { currentAccessToken } from './supabase.js';
+import { resolveServiceUrl } from './endpoints.js';
 
-const BASE = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 const TIMEOUT_MS = 30000;
 
 export class GmailError extends Error {
-  constructor(message, { status = 0, code = '', configuration = null } = {}) {
+  constructor(message, { status = 0, code = '', configuration = null, hint = '' } = {}) {
     super(message);
     this.name = 'GmailError';
     this.status = status;
@@ -28,6 +33,8 @@ export class GmailError extends Error {
     // Present when the server answered "I am not configured": the UI renders the
     // exact variables that are missing instead of a generic failure.
     this.configuration = configuration;
+    // Optional second line with the next concrete action.
+    this.hint = hint;
   }
 }
 
@@ -46,21 +53,48 @@ export function isNotConfigured(error) {
   return error instanceof GmailError && (error.status === 503 || error.code === 'not_configured');
 }
 
-function endpoint(path, query) {
+/** True when this deployment does not serve the mail API at all. */
+export function isBackendMissing(error) {
+  return error instanceof GmailError && (
+    error.code === 'backend_unavailable' || error.code === 'backend_misconfigured'
+  );
+}
+
+/**
+ * The resolved API base for this call.
+ *
+ * Empty string means "this origin", which is the correct production value: the
+ * functions ship with the site. `VITE_API_BASE_URL` exists only for the unusual
+ * case of hosting them elsewhere, and a loopback value is refused for a deployed
+ * page (see lib/endpoints.js) rather than attempted and reported as an outage.
+ */
+function apiBase() {
+  return resolveServiceUrl(import.meta.env.VITE_API_BASE_URL, {
+    label: 'Gmail API base (VITE_API_BASE_URL)',
+  });
+}
+
+function endpoint(base, path, query) {
   const search = query ? `?${new URLSearchParams(query).toString()}` : '';
-  return `${BASE}/api/gmail${path}${search}`;
+  return `${base}/api/gmail${path}${search}`;
 }
 
 async function call(path, { method = 'GET', body, query, timeout = TIMEOUT_MS } = {}) {
+  const resolved = apiBase();
+  if (resolved.problem) {
+    throw new GmailError(resolved.problem, { code: 'backend_misconfigured' });
+  }
+
   const token = await currentAccessToken();
   if (!token) throw new GmailError('You are not signed in.', { status: 401, code: 'unauthorized' });
 
+  const url = endpoint(resolved.url, path, query);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 
   let response;
   try {
-    response = await fetch(endpoint(path, query), {
+    response = await fetch(url, {
       method,
       headers: {
         Accept: 'application/json',
@@ -76,13 +110,17 @@ async function call(path, { method = 'GET', body, query, timeout = TIMEOUT_MS } 
       throw new GmailError('The mail service did not respond in time. Try again.', { code: 'timeout' });
     }
     throw new GmailError(
-      'Could not reach the mail service for this deployment. The app\'s Gmail endpoints must be deployed alongside the site.',
-      { code: 'backend_unavailable' },
+      `Could not reach the mail service at ${new URL(url, location.origin).pathname}.`,
+      {
+        code: 'backend_unavailable',
+        hint: 'If the site was just deployed, confirm the functions in the api/ directory were included in the Vercel build (see the README, "Deployment").',
+      },
     );
   } finally {
     clearTimeout(timer);
   }
 
+  const contentType = String(response.headers.get('content-type') || '');
   const text = await response.text();
   let payload = null;
   try {
@@ -92,19 +130,44 @@ async function call(path, { method = 'GET', body, query, timeout = TIMEOUT_MS } 
   }
 
   if (!response.ok) {
-    // A 404 here is almost always a routing/deployment problem rather than a
-    // real answer, so it gets its own message.
-    if (response.status === 404 && !payload?.error) {
-      throw new GmailError('The mail service is not deployed at this address.', {
-        status: 404,
-        code: 'backend_unavailable',
-      });
+    // The single most useful diagnostic for this application: the request came
+    // back as HTML, which means the SPA rewrite answered it because no API
+    // function matched the path. That is a deployment problem, not a Gmail one.
+    if (contentType.includes('text/html')) {
+      throw new GmailError(
+        `The mail API is not being served on this deployment: ${url} returned the web page instead of an API response.`,
+        {
+          status: response.status,
+          code: 'backend_unavailable',
+          hint: 'The Vercel project must deploy the functions in the api/ directory (the SPA rewrite excludes /api/, so a page response means those functions are absent from this deployment).',
+        },
+      );
     }
+
+    if (response.status === 404 && !payload?.error) {
+      throw new GmailError(
+        `The mail API endpoint ${url} does not exist on this deployment.`,
+        {
+          status: 404,
+          code: 'backend_unavailable',
+          hint: 'Deploying the static site does not deploy the mail functions: they must be part of the same Vercel project as the api/ directory.',
+        },
+      );
+    }
+
     throw new GmailError(payload?.error || `The mail service returned ${response.status}.`, {
       status: response.status,
       code: payload?.code || '',
       configuration: payload?.details || null,
     });
+  }
+
+  if (contentType.includes('text/html')) {
+    // A 200 that is a web page cannot be trusted as mailbox data.
+    throw new GmailError(
+      `The mail API returned an unexpected web page instead of data for ${url}.`,
+      { code: 'backend_unavailable' },
+    );
   }
 
   return payload ?? {};
@@ -136,7 +199,7 @@ export const gmail = {
   send: (payload) => call('/send', { method: 'POST', body: payload }),
 
   /**
-   * Fetches an attachment and returns a Blob URL the caller must revoke.
+   * Fetches an attachment and returns a Blob the caller turns into a download.
    * The download is authorized per request; there is no public attachment URL.
    */
   async downloadAttachment({ messageId, attachmentId, filename }) {

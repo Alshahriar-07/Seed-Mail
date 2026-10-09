@@ -129,12 +129,19 @@ each platform's own environment configuration.
 | `VITE_SUPABASE_URL` | `https://jptukeybgvuehdzghxfj.supabase.co` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | your Supabase **publishable (anon)** key |
 | `VITE_SITE_URL` | `https://mrseedmail.vercel.app` |
-| `VITE_MAIL_WORKER_URL` | public URL of the campaign worker service (§10) |
-| `VITE_API_BASE_URL` | *optional.* Only for a build whose `/api/gmail` lives elsewhere. Leave unset in production. |
+| `VITE_MAIL_WORKER_URL` | the **deployed** campaign worker service URL, e.g. `https://seedmail-worker.onrender.com` (§10). Leave it **blank** for local development to use `http://127.0.0.1:8765`. |
+| `VITE_API_BASE_URL` | *optional.* Only for a build whose `/api/gmail` lives somewhere other than this site. Leave unset in production. |
 
 Everything `VITE_`-prefixed is inlined into the public JavaScript bundle. Never
 put a Supabase secret/service-role key, a Google client secret, or a Gmail App
 Password behind a `VITE_` name.
+
+> **Never set a `localhost` / `127.0.0.1` value in the Vercel environment for
+these two variables.** A deployed site cannot reach your computer. The app
+refuses to use such a value (see `frontend/js/lib/endpoints.js`), reports it as a
+configuration problem, and the build prints a warning — but the correct fix is to
+set the deployed service URL. `VITE_API_BASE_URL` normally stays unset because
+the Gmail endpoints ship with the site on the same origin.
 
 ### 3.2 Vercel — server functions (trusted, `api/gmail/*`)
 
@@ -516,6 +523,239 @@ Two compounding reasons it stayed broken:
 
 ---
 
+## 11a. Troubleshooting "The send worker is not reachable"
+
+### The symptom
+
+A **deployed** site showed:
+
+```
+The send worker is not reachable. For local development, start it with
+"python worker/main.py".
+```
+
+That is a local-development instruction being shown to production users, which
+means the deployed build resolved the worker URL to `127.0.0.1`.
+
+The same sentence also appeared when the worker **was** running and correctly
+addressed but answered every request with HTTP 500 — the client reports an
+unusable service and an unreachable one the same way. If the URL is right and the
+worker is up, read §11d instead.
+
+### The confirmed cause
+
+`frontend/js/lib/worker.js` had a hardcoded `DEFAULT_WORKER_URL =
+'http://127.0.0.1:8765'` that was applied to **every** build:
+
+```js
+// before
+workerBaseUrl()  => import.meta.env.VITE_MAIL_WORKER_URL || 'http://127.0.0.1:8765'
+workerIsLocal()  => hostname of workerBaseUrl() is 127.0.0.1   // always true when unset
+```
+
+With `VITE_MAIL_WORKER_URL` unset (or left at the `frontend/.env.example`
+placeholder value) in the Vercel project, the production bundle pointed at
+loopback, `workerIsLocal()` returned `true`, and the UI therefore chose the
+local-development wording.
+
+### The fix
+
+URL resolution moved to `frontend/js/lib/endpoints.js`, which is unit tested
+(`tests/js/endpoints.test.mjs`):
+
+* a configured URL is used as-is, **except** that a loopback address is rejected
+  when the page is not itself served from this machine;
+* the loopback default is applied only to a locally served build;
+* `http://` service URLs are rejected by an `https://` page (mixed content);
+* when nothing usable is configured the resolver returns **no URL** plus a
+  reason — it never invents a host.
+
+The reason is surfaced as `config_problem` through `api.js` so Settings and the
+Dashboard say *"the configured send worker URL points at this machine … replace
+it and redeploy"* instead of reporting an outage. `vite.config.js` also prints
+the same warning into the build log when `VERCEL_ENV=production`.
+
+### Notes that matter
+
+* Campaigns are **queued in Supabase**, not held in the browser, so an
+  unreachable worker delays delivery rather than losing the campaign. The UI says
+  exactly that and no longer claims anything is "sending".
+* `python worker/main.py` remains the correct instruction for local development,
+  and it is only ever shown when the page is actually served from this machine.
+* Production never depends on the developer's computer: the worker is a separate
+  host (§10). If you have not deployed one, campaigns stay queued and Settings
+  reports "No send worker is configured for this deployment".
+
+---
+
+## 11b. Troubleshooting "The mail service is not deployed at this address"
+
+### The symptom
+
+Inbox / Compose / Sent showed:
+
+```
+The mail service is not deployed at this address.
+```
+
+(raised by `frontend/js/lib/gmail.js` when `/api/gmail/status` returned a 404
+with no JSON body.)
+
+### The confirmed causes
+
+1. **The Vercel build was failing** (see §11c), so the live deployment was an
+   older build that predates the `api/gmail` functions entirely. A failed build
+   keeps serving the previous deployment — every `/api/gmail/*` request 404s.
+2. `frontend/js/lib/gmail.js` fell back to a bare `/api/gmail/…` path with no
+   diagnostics, so a 404 from *any* cause produced the same unhelpful sentence.
+
+### The fix
+
+* The build failure was repaired (§11c), which is what makes the functions part
+  of the deployment.
+* The client now resolves its base through `endpoints.js`, and reports the actual
+  condition:
+  * the response was **HTML** → the SPA rewrite answered the request, which means
+    the functions are absent from that deployment;
+  * a bare **404** → the path does not exist on this deployment;
+  * a **network failure** → the service is unreachable;
+  each with the resolved path and the concrete next step.
+* The SPA rewrite in `vercel.json` excludes `api/`, so an API request can never
+  be rewritten to `index.html`.
+
+The Gmail endpoints live in the same Vercel project as the site (`api/gmail/*`,
+served from the same origin), so **no** API URL needs to be configured in
+production. `VITE_API_BASE_URL` exists only for the unusual case of hosting them
+elsewhere, and a loopback value is refused there too.
+
+---
+
+## 11c. Troubleshooting "Failed to parse source for import analysis"
+
+### The symptom
+
+The Vercel build stopped during `vite build`:
+
+```
+frontend/js/mail-common.js: Failed to parse source for import analysis because
+the content contains invalid JS syntax.
+```
+
+### The confirmed cause
+
+`frontend/js/mail-common.js` was **truncated mid-statement** in the commit the
+build used. The file ended at:
+
+```js
+      } catch (error) {
+```
+
+with no newline at end of file — leaving the `catch` block, the
+`addEventListener` callback, the enclosing `forEach`, and the whole
+`openReader` function unterminated. Node reports this precisely:
+
+```
+SyntaxError: Unexpected end of input
+```
+
+It is not an import problem, a template-literal problem, or a conflict marker:
+the file is simply incomplete. `vite build` fails at the import-analysis step
+because it cannot parse the module at all.
+
+### The fix
+
+The file was completed (the `catch` body, the `finally` block that restores the
+attachment button, and the closing braces of `openReader`, which returns the
+modal). The surrounding behaviour is unchanged.
+
+### How to catch it before a deployment
+
+```bash
+npm run check:syntax   # node --check every frontend/api/backend module
+npm run build          # the same parse step Vercel runs
+```
+
+---
+
+## 11d. Troubleshooting: the worker starts but every request returns HTTP 500
+
+### The symptom
+
+`python worker/main.py` printed a completely healthy banner —
+`Application startup complete`, the configuration report, `Press Ctrl+C to stop`
+— and bound its port. The frontend still reported the worker as unavailable.
+
+Every endpoint failed, including the unauthenticated one:
+
+```
+GET /api/worker/health         → HTTP 500  "Internal Server Error"
+GET /api/worker/status         → HTTP 500
+GET /api/worker/queue/status   → HTTP 500
+```
+
+### The confirmed cause
+
+`worker/queue.py` — the campaign-queue data-access module — **shadowed Python's
+standard-library `queue`**, and `python worker/main.py` is what triggered it:
+
+```
+ImportError: cannot import name 'Queue' from 'queue'
+             (C:\...\Email\worker\queue.py)
+  File "...\site-packages\anyio\_backends\_asyncio.py", line 46, in <module>
+    from queue import Queue
+```
+
+Running that file directly puts its own directory first on `sys.path`. A module
+file there therefore wins over the standard library for the **entire process**,
+whether or not anything imports it on purpose. Starlette runs synchronous
+endpoints in a thread pool, and its thread offload (`anyio`) does
+`from queue import Queue` at that moment — so it imported `worker/queue.py`,
+hit the `ImportError`, and every request became a 500.
+
+This is why the failure was so confusing: the worker's own code was fine, the
+banner was honest, the port was open, and nothing in the log mentioned the real
+problem. Only the *deferred* import inside anyio failed, one request at a time.
+
+### The fix
+
+1. The module was renamed to **`worker/campaign_queue.py`** (a `git mv`, so the
+   history is preserved) and all references updated in `worker/main.py`,
+   `worker/queue_worker.py` and `tests/test_queue.py`.
+2. `worker.config.shadowed_stdlib_modules()` / `import_hygiene_problem()` now
+   detect the hazard, and `worker/main.py` **refuses to start** with exit code 2
+   and a named explanation rather than serving 500s:
+
+   ```
+   Seed Code Mail — send worker cannot start
+   worker/queue.py shadows a Python standard-library module. …
+   ```
+
+   The same check is reported as `import_hygiene_ok` by `GET /api/worker/health`
+   and in the startup banner.
+3. `tests/test_worker_config.py` pins it three ways: no module in `worker/`
+   shadows the stdlib, the check fires when one is planted, and a subprocess with
+   `worker/` first on `sys.path` proves `import queue` still resolves to the
+   standard library and that `anyio._backends._asyncio` imports it successfully.
+
+### Verified behaviour
+
+```
+GET /api/worker/health  → 200
+{"ok": true, "auth_configured": false, "import_hygiene_ok": true,
+ "configuration_problems": ["SUPABASE_URL is not set …", …]}
+
+GET /api/worker/queue/status → 401 {"detail":"Missing access token."}   # correct: unauthenticated
+```
+
+The health probe reports a running process *and* its real configuration gaps; it
+never reports `ok: true` as if the worker were ready to send.
+
+> Do not reintroduce a `worker/queue.py`. If a new module needs the name, use it
+> as a submodule name *inside* the package (e.g. `worker/campaign_queue.py`), and
+> run the worker as `python worker/main.py` or `python -m worker.main`.
+
+---
+
 ## 12. Profile and About
 
 **Profile** shows the account email, display name (editable), account creation
@@ -533,19 +773,35 @@ time.
 
 ## 13. Deployment
 
-`vercel.json` matches the real framework: Vite, `npm run build`, output `dist`,
-plus the Node functions under `api/`.
+`vercel.json` matches the real framework: Vite, `npm ci`, `npm run build`,
+output `dist`, plus the Node functions under `api/`.
 
 1. Import the repository in Vercel.
 2. Set §3.1 and §3.2 for **Production, Preview and Development**.
 3. Deploy. Changing an environment variable does **not** update an existing
    deployment — redeploy afterwards.
 
+`installCommand` is `npm ci` rather than `npm install`: it installs exactly the
+locked dependency graph and fails loudly if `package.json` and
+`package-lock.json` ever disagree. The lockfile is platform-complete (it
+contains every `@esbuild/*` binary, including `linux-x64`), so it installs
+correctly on Vercel's Linux builders even though it was generated on Windows.
+`engines.node` is `>=20`.
+
+**The mail API ships with this project.** `api/gmail/*.js` are Vercel Node
+functions in the same project as the site, so they are served from the same
+origin and no API URL has to be configured. Deploying the frontend is therefore
+what deploys the mail API — which is also why a **failed build keeps the previous
+deployment live and every `/api/gmail/*` request 404s** until the build is fixed.
+The separate Python campaign worker is *not* part of this project and is never
+deployed by Vercel (see §10).
+
 Routing: the SPA is hash-routed, so refreshes work by construction. A rewrite
 covers real deep links while leaving `api/`, `/assets/*`, `robots.txt` and
-`sitemap.xml` untouched (functions are matched before the rewrite). Security
-headers (nosniff, frame denial, referrer policy, HSTS, permissions policy) are
-set. There is no writable filesystem usage and no long-running process on Vercel.
+`sitemap.xml` untouched (functions are matched before the rewrite, and the
+rewrite pattern excludes `api/` explicitly). Security headers (nosniff, frame
+denial, referrer policy, HSTS, permissions policy) are set. There is no writable
+filesystem usage and no long-running process on Vercel.
 
 **Manual steps that source changes cannot perform:**
 
@@ -574,6 +830,63 @@ set. There is no writable filesystem usage and no long-running process on Vercel
 Not implemented, and therefore not claimed: a Content-Security-Policy for the
 application page itself, rate limiting, and audit logging.
 
+### Dependency notes
+
+`npm audit` reports one advisory: **GHSA-67mh-4wv8-2f99**, esbuild `<= 0.24.2` —
+"esbuild enables any website to send any requests to the development server and
+read the response". It is inherited from `vite@5.4.x` (`esbuild@0.21.5`).
+
+* It affects the **Vite development server** only (`npm run dev`). Production
+  serves a pre-built `dist/` from Vercel's static hosting; no dev server runs and
+  no request reaches esbuild at runtime.
+* Vite's dev server binds to `127.0.0.1` by default, and the advisory requires an
+  attacker to reach that server — it is not exposed by this project's
+  configuration.
+* Removing it requires `vite@7`/`vite@8` (`npm audit fix --force` proposes
+  `vite@8`), a two-major upgrade whose Node requirement
+  (`^20.19.0 || >=22.12.0`) is not guaranteed by the build host, and which would
+  change the very build being repaired here. It is deliberately **not** applied
+  in this change: it should be a separate, individually verified upgrade.
+* The `esbuild` "install scripts were ignored" notice during `npm install` is
+  benign in this project: esbuild's postinstall only verifies the platform
+  binary, which arrives through the optional dependency
+  (`@esbuild/<platform>`), and `npm run build` completes successfully without it.
+
+Nothing in this project depends on a package with a runtime (production) exploit
+path that `npm audit` reports.
+
+#### The esbuild "install scripts were ignored" notice
+
+When that notice appears in a build log it comes from a package manager that
+blocks lifecycle scripts by default — **pnpm 10+** prints
+`Ignored build scripts: esbuild … Run "pnpm approve-builds"` — or from an
+explicitly disabled `ignore-scripts` setting. It is not produced by npm in this
+repository: a clean `npm ci` here prints no install-script warning and exits 0.
+
+It is also harmless either way. esbuild's `postinstall` only *verifies* the
+platform binary, which is delivered through the normal optional dependency
+(`@esbuild/<platform>`, e.g. `@esbuild/win32-x64`), not downloaded by the script.
+This project's `package-lock.json` contains all of those platform packages, and
+`npm run build` completes with the script skipped.
+
+`vercel.json` now pins `"installCommand": "npm ci"` and the repository tracks
+exactly one lockfile (`package-lock.json`), so the deployment installs with npm
+and the pnpm-specific notice cannot appear for this project. If it still does,
+the Vercel project has an **Install Command** override in Settings → Build &
+Development — clear it so the checked-in `vercel.json` applies.
+
+#### Node.js engine requirement
+
+The only engine constraint here is this project's own: `package.json` declares
+`"engines": { "node": ">=20" }`, which is what `vite@5` needs
+(`^18.0.0 || >=20.0.0`) and what the code uses. Dependencies in the lockfile ask
+for `>=12` or lower, so none of them can fail the engine check.
+
+Vercel's default Node runtime satisfies `>=20`, so no `Node.js Version` override
+is required in project settings. If a deployment ever needs to pin it, set it in
+Settings → General → Node.js Version — not by loosening `engines`, which would
+hide a genuine mismatch rather than fix it.
+
 ---
 
 ## 15. Project structure
@@ -592,20 +905,22 @@ application page itself, rate limiting, and audit logging.
 │   │   ├── profile.js           # account + Gmail connection
 │   │   ├── about.js             # capabilities and runtime status
 │   │   ├── mail-common.js       # shared mailbox UI + message reader
-│   │   └── lib/                 # supabase, gmail, email-html, worker, render, stores
+│   │   └── lib/                 # endpoints, supabase, gmail, email-html, worker, render, stores
 │   └── public/                  # robots.txt, sitemap.xml, favicon.svg, og-image.png
 ├── api/gmail/                   # Vercel Node functions: the Gmail backend
 │   ├── status.js  connect.js  callback.js  disconnect.js
 │   ├── inbox.js  sent.js  message.js  modify.js  send.js  attachment.js
 ├── backend/lib/                 # shared server code (config, crypto, oauth, gmail, mime…)
 ├── worker/                      # Python campaign worker (FastAPI + SMTP + queue consumer)
-│   ├── main.py  auth.py  config.py  sender.py  queue.py  queue_worker.py
-│   └── supabase_client.py  settings_overrides.py
+│   ├── main.py  auth.py  config.py  sender.py  campaign_queue.py
+│   │                            #   ↑ NOT queue.py — see §11d
+│   └── queue_worker.py  supabase_client.py  settings_overrides.py
 ├── services/                    # shared, tested business logic (SMTP engine, templates)
 ├── app.py                       # legacy local app + static server for ./dist
 ├── supabase/migrations/         # 0001 schema · 0002 RLS · 0003 queue · 0004 Gmail
 ├── tests/                       # pytest (worker, backend) and node tests (JS + API routes)
 ├── tools/check-api.mjs          # imports every api route and checks its auth wiring
+├── tools/check-syntax.mjs       # parses every frontend/api/backend module (npm run check:syntax)
 └── vercel.json                  # Vite build, functions, SPA rewrite, security headers
 ```
 

@@ -1,9 +1,30 @@
-"""Settings service: reads and writes the project ``.env`` file.
+"""Settings service: reads the project ``.env`` file *and* the process environment.
 
 The real Gmail App Password (``GAPP_PASS``) is never returned to clients.
 Unknown keys already present in ``.env`` are preserved on write, and the file
 is replaced atomically.  Updated values take effect immediately because the
 in-memory cache is refreshed on every successful write.
+
+Value precedence — and why it is this way
+-----------------------------------------
+1. a key written in ``.env`` wins;
+2. otherwise the process environment is used;
+3. otherwise the built-in default.
+
+Step 2 exists because a hosted worker (Docker / Render / Railway / Fly.io /
+Kubernetes) **has no ``.env`` file**: the platform injects configuration as
+environment variables, which is exactly what README §3.3 tells operators to do.
+This service previously read the file and nothing else, so every documented host
+variable was silently ignored: the worker started, reported
+``smtp_configured: false`` and could not send a single campaign, no matter how
+correctly the host was configured.
+
+Step 1 keeps local development and the Settings UI byte-for-byte unchanged, since
+that UI writes ``.env``.
+
+Environment values are read-only. They are deliberately NOT copied into the
+in-memory cache and never written back to disk, so saving non-secret settings on a
+hosted worker cannot spill a platform secret into a file.
 """
 
 from __future__ import annotations
@@ -62,6 +83,23 @@ def _parse_env(text: str) -> dict[str, str]:
     return values
 
 
+def environment_settings() -> dict[str, str]:
+    """Recognised settings supplied as process environment variables.
+
+    Only names this service already knows about (the keys of ``DEFAULTS``, which
+    includes the required ``Email`` and ``GAPP_PASS``) are read. An unrelated
+    variable that happens to be called ``Email`` on some machine can therefore
+    never wander into the mail configuration, and no new names can be smuggled in
+    through the environment.
+    """
+    found: dict[str, str] = {}
+    for key in DEFAULTS:
+        value = str(os.getenv(key) or "").strip()
+        if value:
+            found[key] = value
+    return found
+
+
 class SettingsService:
     """Thread-safe .env backed configuration store."""
 
@@ -69,6 +107,10 @@ class SettingsService:
         self._path = Path(env_path)
         self._lock = threading.RLock()
         self._cache: dict[str, str] = {}
+        # Keys the .env FILE defines (these win over the environment) and the
+        # environment values that fill the rest. Neither is written to disk.
+        self._file_keys: set[str] = set()
+        self._environment: dict[str, str] = {}
         self.reload()
 
     # -- internal -----------------------------------------------------------
@@ -87,6 +129,27 @@ class SettingsService:
             for retired in RETIRED_KEYS:
                 merged.pop(retired, None)
             self._cache = merged
+            # Provenance, kept separate from the cache on purpose: `_cache` is
+            # what gets written back to .env, and an environment-provided secret
+            # must never end up there.
+            self._file_keys = {
+                key for key, value in raw.items()
+                if key in DEFAULTS and str(value).strip()
+            }
+            self._environment = {
+                key: value
+                for key, value in environment_settings().items()
+                if key not in self._file_keys
+            }
+
+    def _effective(self, key: str) -> str:
+        """The value in force: `.env` file, else environment, else default."""
+        with self._lock:
+            if key in self._file_keys:
+                return self._cache.get(key, DEFAULTS.get(key, ""))
+            if key in self._environment:
+                return self._environment[key]
+            return self._cache.get(key, DEFAULTS.get(key, ""))
 
     def _write(self, values: dict[str, str]) -> None:
         """Persist ``values`` to .env, preserving unrelated/unknown lines."""
@@ -137,11 +200,16 @@ class SettingsService:
 
     def raw(self) -> dict[str, str]:
         with self._lock:
-            return dict(self._cache)
+            cached = dict(self._cache)
+        merged = dict(cached)
+        for key in DEFAULTS:
+            if key not in self._file_keys and key in self._environment:
+                merged[key] = self._environment[key]
+        return merged
 
     def get(self, key: str, default: str = "") -> str:
-        with self._lock:
-            return self._cache.get(key, default)
+        value = self._effective(key)
+        return value if value != "" else default
 
     def get_int(self, key: str, default: int) -> int:
         try:
@@ -161,8 +229,7 @@ class SettingsService:
 
     def public(self) -> dict[str, Any]:
         """Return settings safe to expose to the browser."""
-        with self._lock:
-            data = {k: self._cache.get(k, "") for k in EDITABLE_KEYS}
+        data = {k: self._effective(k) for k in EDITABLE_KEYS}
         data.pop("GAPP_PASS", None)
         return {
             "values": data,
@@ -178,9 +245,12 @@ class SettingsService:
         A missing / blank ``GAPP_PASS`` keeps the existing password.  Passing
         the literal mask string is also treated as "unchanged".
         """
-        with self._lock:
-            current = dict(self._cache)
-            candidate = dict(current)
+        # Validate against the values actually in force (so a host that supplies
+        # SMTP settings through the environment can still save preferences), but
+        # write only the .env-backed cache below — environment values are never
+        # persisted to disk.
+        current = {key: self._effective(key) for key in DEFAULTS}
+        candidate = dict(current)
 
         def _get(key: str) -> str:
             return str(payload.get(key, candidate.get(key, ""))).strip()

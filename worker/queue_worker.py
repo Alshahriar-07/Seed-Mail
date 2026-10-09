@@ -53,7 +53,17 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(dotenv_path=ROOT / ".env", override=False)
 
 from services.settings_service import settings_service  # noqa: E402
-from worker.queue import QueueError, QueueNotConfigured, WorkerQueue, queue_configured  # noqa: E402
+from worker import config  # noqa: E402
+from worker.campaign_queue import (  # noqa: E402
+    QueueError,
+    QueueNotConfigured,
+    WorkerQueue,
+    queue_configured,
+)
+
+# See worker/config.py: keeps an unencodable character in a log line from killing
+# the consumer on a non-UTF-8 console.
+config.configure_console_encoding()
 from worker.sender import COMPLETED, CANCELLED, PAUSED, RUNNING, CampaignManager  # noqa: E402
 from worker.supabase_client import SupabaseRest  # noqa: E402
 

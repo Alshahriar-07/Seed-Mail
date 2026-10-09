@@ -1,11 +1,16 @@
-// Seed Code Mail — interface to the send worker service
+// Seed Code Mail — interface to the campaign send worker service
 //
 // Vercel cannot hold a long-running sequential SMTP campaign, and the Gmail App
-// Password must never reach the browser bundle or Supabase. Sending therefore
-// happens in a separate, continuously available worker service (`worker/`),
-// deployed on a host that keeps a process alive and pointed at by
-// `VITE_MAIL_WORKER_URL`. Nothing about it requires the end user to run Python:
-// campaigns are queued in Supabase and the worker claims them from there.
+// Password must never reach the browser bundle or Supabase. Campaign delivery
+// therefore happens in a separate, continuously available worker service
+// (`worker/`), deployed on a host that keeps a process alive and pointed at by
+// `VITE_MAIL_WORKER_URL`.
+//
+// Nothing here requires an end user to run Python: a campaign is *queued* in
+// Supabase (`frontend/js/api.js → startCampaign`), and the worker claims it from
+// the database with an atomic lease. The worker HTTP endpoints below are used for
+// status, per-user SMTP settings and diagnostics — so an unreachable worker
+// delays campaign delivery, it does not lose the campaign.
 //
 // Trust model:
 //   * every request carries the signed-in user's Supabase access token, which
@@ -18,57 +23,81 @@
 // credentials.
 
 import { currentAccessToken } from './supabase.js';
+import { resolveServiceUrl } from './endpoints.js';
 
-const DEFAULT_WORKER_URL = 'http://127.0.0.1:8765';
+/** Used only by a locally served build (see lib/endpoints.js). */
+const LOCAL_WORKER_URL = 'http://127.0.0.1:8765';
 const TIMEOUT_MS = 10000;
 
+let cached = null;
+
 /**
- * True when this build can reach a send worker at all.
+ * How the worker URL resolved this time.
  *
- * A deployed build (Vercel) is configured only through `VITE_MAIL_WORKER_URL`.
- * A build served from localhost is the development setup, where the worker runs
- * on this machine and the default URL already points at it — so it is treated as
- * configured rather than pretending no worker exists.
+ * @returns {{configured: boolean, local: boolean, url: string, source: string, problem: string, staleLocalhost: boolean}}
  */
+export function workerConfig() {
+  if (cached) return cached;
+  const resolved = resolveServiceUrl(import.meta.env.VITE_MAIL_WORKER_URL, {
+    localDefault: LOCAL_WORKER_URL,
+    label: 'send worker (VITE_MAIL_WORKER_URL)',
+  });
+  cached = {
+    configured: Boolean(resolved.url),
+    local: Boolean(resolved.url) && resolved.source === 'local-default',
+    url: resolved.url,
+    source: resolved.source,
+    problem: resolved.problem,
+    staleLocalhost: resolved.staleLocalhost,
+  };
+  return cached;
+}
+
+/** True when this build has a usable worker URL. */
 export function workerConfigured() {
-  if (import.meta.env.VITE_MAIL_WORKER_URL) return true;
-  return servedLocally();
+  return workerConfig().configured;
 }
 
-/** True when the page itself is being served from this machine. */
-function servedLocally() {
-  if (typeof location === 'undefined') return false;
-  return ['', 'localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
-}
-
-/** True when the configured worker is on this machine (local development). */
+/** True only for the local-development worker on this machine. */
 export function workerIsLocal() {
-  try {
-    const host = new URL(workerBaseUrl()).hostname;
-    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
-  } catch (_) {
-    return false;
-  }
+  return workerConfig().local;
+}
+
+/** The resolved worker base URL, or '' when there is no usable one. */
+export function workerBaseUrl() {
+  return workerConfig().url;
 }
 
 /**
- * A message that tells the operator what to do, without telling end users to
- * run a Python process that the production deployment does not need.
+ * A message that tells whoever can act what to do.
+ *
+ * It never asks a production user to run a local Python process: the only case
+ * that mentions `python worker/main.py` is a build that is itself being served
+ * from this machine, where that instruction is correct.
  */
 export function workerUnavailableHelp() {
-  if (!workerConfigured()) {
-    return (
-      'No send worker URL is configured for this deployment. Set VITE_MAIL_WORKER_URL ' +
-      'to the worker service URL in the Vercel project settings and redeploy ' +
-      '(local development: run "python worker/main.py").'
-    );
+  const config = workerConfig();
+
+  if (!config.configured) {
+    if (config.staleLocalhost) return config.problem;
+    if (config.problem) return config.problem;
+    if (config.source === 'unset') {
+      return (
+        'No send worker URL is configured for this deployment, so campaigns stay queued in ' +
+        'your account and are delivered once a worker is connected. Set VITE_MAIL_WORKER_URL ' +
+        'to the deployed worker service URL and redeploy.'
+      );
+    }
+    return 'No send worker is available for this deployment.';
   }
-  if (workerIsLocal()) {
-    return `Cannot reach the send worker at ${workerBaseUrl()}. For local development, start it with "python worker/main.py".`;
+
+  if (config.local) {
+    return `Cannot reach the send worker at ${config.url}. For local development, start it with "python worker/main.py".`;
   }
+
   return (
-    `The send worker service at ${workerBaseUrl()} did not respond. Queued campaigns stay ` +
-    'queued and send once the worker is available again — no action is needed here.'
+    `The send worker service at ${config.url} did not respond. Queued campaigns stay queued and ` +
+    'are delivered automatically when it returns — no action is needed here.'
   );
 }
 
@@ -80,12 +109,14 @@ export class WorkerUnavailableError extends Error {
   }
 }
 
-export function workerBaseUrl() {
-  const configured = import.meta.env.VITE_MAIL_WORKER_URL || DEFAULT_WORKER_URL;
-  return configured.replace(/\/+$/, '');
-}
-
 async function call(path, { method = 'GET', body, auth = true, timeout = TIMEOUT_MS } = {}) {
+  const base = workerBaseUrl();
+  if (!base) {
+    // Never send the request to a bare path: on a deployed site that would hit
+    // the SPA origin and fail with a 404 that looks like a routing bug.
+    throw new WorkerUnavailableError(workerUnavailableHelp());
+  }
+
   const headers = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
@@ -100,7 +131,7 @@ async function call(path, { method = 'GET', body, auth = true, timeout = TIMEOUT
 
   let response;
   try {
-    response = await fetch(workerBaseUrl() + path, {
+    response = await fetch(base + path, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -155,9 +186,9 @@ export const worker = {
   testSmtp: () => call('/api/worker/test-smtp', { method: 'POST', body: {} }),
 
   /**
-   * Hands the worker everything it needs for one campaign run:
-   * the campaign id, its subject, the LOCAL template HTML (never stored in
-   * Postgres) and the recipient list.
+   * Legacy direct start. The UI queues campaigns in Supabase instead (so the
+   * browser can be closed); this remains for the worker's own diagnostics and
+   * for local runs.
    */
   startCampaign: (payload) => call('/api/worker/campaigns/start', { method: 'POST', body: payload }),
 

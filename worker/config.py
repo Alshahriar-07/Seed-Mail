@@ -40,6 +40,8 @@ server configuration, and a worker deployed on another host never sees them.
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 # Values that mean "not really configured". Compared case-insensitively after
 # trimming quotes/whitespace.
@@ -58,6 +60,37 @@ _PLACEHOLDERS = {
     "null",
     "todo",
 }
+
+
+def configure_console_encoding() -> None:
+    """Make console output unable to crash the worker on non-UTF-8 terminals.
+
+    On Windows the console code page is often cp1252, which cannot represent
+    characters such as ``U+2192`` (RIGHTWARDS ARROW) or ``U+2026`` (HORIZONTAL
+    ELLIPSIS). ``print()`` then raises ``UnicodeEncodeError`` — and because the
+    startup banner is printed before the HTTP server is started, the worker died
+    before binding its port:
+
+        UnicodeEncodeError: 'charmap' codec can't encode character '\\u2192'
+
+    That failure looks, from the browser, exactly like an offline worker
+    ("the send worker is not reachable"), which is why it is fixed here rather
+    than by remembering to keep every log line ASCII forever.
+
+    Reconfiguring stdout/stderr to UTF-8 with ``errors="replace"`` means any
+    unencodable character degrades to a replacement glyph instead of terminating
+    the process. A library error message, a recipient's name, or an email address
+    can therefore never take the worker down.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:  # replaced by a wrapper (e.g. pytest capture)
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):  # pragma: no cover - platform dependent
+            # Never let a cosmetic fix break startup.
+            pass
 
 
 def _clean(value: str | None) -> str:
@@ -93,6 +126,77 @@ def first_env(*names: str) -> str:
         if _is_real(value):
             return value
     return ""
+
+
+# --- Import hygiene ---------------------------------------------------------
+#
+# `python worker/main.py` puts THIS directory first on `sys.path`, so any module
+# file here shares a namespace with the standard library. A file called
+# `queue.py` therefore *replaces* the stdlib `queue` for the entire process.
+#
+# That is exactly the failure this project shipped: `worker/queue.py` (the
+# campaign-queue data access module) shadowed the stdlib, so `anyio`'s
+# `from queue import Queue` blew up with
+#
+#     ImportError: cannot import name 'Queue' from 'queue'
+#
+# and — because Starlette uses anyio to run sync endpoints in a thread pool —
+# EVERY HTTP endpoint answered 500 while the process itself started cleanly and
+# printed a healthy banner. It looked like an offline worker from the browser.
+# The module is now `worker/campaign_queue.py` (see the note at its top), and the
+# check below keeps the situation from returning unnoticed.
+
+# Extra names to treat as protected, for runtimes where `sys.stdlib_module_names`
+# is unavailable or incomplete. Only modules that a dep could plausibly import.
+_EXTRA_STDLIB_NAMES = frozenset(
+    {
+        "abc", "asyncio", "base64", "copy", "csv", "dataclasses", "email",
+        "hashlib", "hmac", "html", "http", "io", "json", "logging", "queue",
+        "re", "secrets", "select", "signal", "socket", "ssl", "string",
+        "tempfile", "threading", "time", "token", "types", "typing", "uuid",
+        "warnings", "zipfile",
+    }
+)
+
+
+def _stdlib_module_names() -> frozenset[str]:
+    names = set(getattr(sys, "stdlib_module_names", ()))
+    names |= _EXTRA_STDLIB_NAMES
+    return frozenset(names)
+
+
+def shadowed_stdlib_modules() -> list[str]:
+    """Module names in this package that would shadow a standard-library module.
+
+    Returns a sorted list of names, e.g. ``['queue']``. Empty is correct and
+    expected. Non-empty means the worker must not be started with this directory
+    on ``sys.path`` (the documented ``python worker/main.py`` start), because
+    dependencies would silently import the wrong module.
+    """
+    package_dir = Path(__file__).resolve().parent
+    protected = _stdlib_module_names()
+    shadowing: list[str] = []
+    for path in sorted(package_dir.glob("*.py")):
+        name = path.stem
+        if name.startswith("_") or not name.isidentifier():
+            continue
+        if name in protected:
+            shadowing.append(name)
+    return shadowing
+
+
+def import_hygiene_problem() -> str:
+    """A human-readable description of an import-shadowing hazard, else ''."""
+    shadowing = shadowed_stdlib_modules()
+    if not shadowing:
+        return ""
+    names = ", ".join(f"worker/{name}.py" for name in shadowing)
+    return (
+        f"{names} shadows a Python standard-library module. Because `python "
+        "worker/main.py` puts worker/ first on sys.path, dependencies that import "
+        f"it (e.g. anyio's `from {shadowing[0]} import ...`) would get the wrong "
+        "module and every HTTP endpoint would fail. Rename the file."
+    )
 
 
 # --- Supabase ---------------------------------------------------------------
@@ -180,6 +284,10 @@ def diagnose() -> dict:
             "campaign delivery does."
         )
 
+    hygiene = import_hygiene_problem()
+    if hygiene:
+        problems.append(hygiene)
+
     return {
         "supabase_url_set": bool(url),
         "supabase_publishable_key_set": bool(publishable),
@@ -188,5 +296,6 @@ def diagnose() -> dict:
         "auth_configured": auth_configured(),
         "queue_configured": queue_configured(),
         "gmail_api_configured": gmail_api_configured(),
+        "import_hygiene_ok": not hygiene,
         "problems": problems,
     }

@@ -171,6 +171,68 @@ def test_health_reports_capabilities_and_problems_without_values(clean_env):
 def test_health_reports_an_unconfigured_worker_honestly(clean_env):
     app = create_app(origins=["http://localhost:5173"])
     body = TestClient(app).get("/api/worker/health").json()
-    assert body["ok"] is True  # the process is alive …
-    assert body["auth_configured"] is False  # … but it cannot verify users
+    assert body["ok"] is True  # the process is alive ...
+    assert body["auth_configured"] is False  # ... but it cannot verify users
     assert len(body["configuration_problems"]) >= 2
+
+
+# --- import hygiene ---------------------------------------------------------
+#
+# `python worker/main.py` puts worker/ first on sys.path. A module file there
+# named after a stdlib module silently replaces it process-wide, which is how
+# every endpoint came to answer HTTP 500 while the worker looked healthy.
+
+
+def test_no_worker_module_shadows_the_standard_library():
+    assert config.shadowed_stdlib_modules() == []
+    assert config.import_hygiene_problem() == ""
+
+
+def test_health_reports_import_hygiene(clean_env):
+    app = create_app(origins=["http://localhost:5173"])
+    body = TestClient(app).get("/api/worker/health").json()
+    assert body["import_hygiene_ok"] is True
+
+
+def test_queue_resolves_to_the_standard_library_with_worker_on_path():
+    """The regression itself: `import queue` must never find worker/queue.py.
+
+    This is checked in a subprocess with the worker directory first on
+    sys.path, which is exactly how `python worker/main.py` runs. anyio's
+    `from queue import Queue` is then executed for real, because that import
+    failure is what turned every request into a 500.
+    """
+    import subprocess
+
+    worker_dir = str(ROOT / "worker")
+    script = (
+        "import sys, os; sys.path.insert(0, sys.argv[1]); "
+        "import queue; "
+        "resolved = os.path.realpath(queue.__file__); "
+        "assert os.path.dirname(resolved) != os.path.realpath(sys.argv[1]), resolved; "
+        "assert os.path.basename(resolved).startswith('queue.'), resolved; "
+        "from queue import Queue; "
+        "import anyio._backends._asyncio as backend; "
+        "assert backend.Queue is Queue\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, worker_dir],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_import_hygiene_check_detects_a_shadowing_module(monkeypatch, tmp_path):
+    """The guard has to actually fire, or it proves nothing."""
+    fake_package = tmp_path / "worker"
+    fake_package.mkdir()
+    (fake_package / "queue.py").write_text("MARKER = 'shadow'\n", encoding="utf-8")
+    (fake_package / "config.py").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(config, "__file__", str(fake_package / "config.py"))
+    assert config.shadowed_stdlib_modules() == ["queue"]
+    problem = config.import_hygiene_problem()
+    assert "worker/queue.py" in problem
+    assert "sys.path" in problem

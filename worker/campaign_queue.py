@@ -1,5 +1,14 @@
 """Durable campaign-queue access for the remote send worker.
 
+Naming note: this module used to be called ``worker/queue.py``. That name is a
+trap — running ``python worker/main.py`` puts this directory on ``sys.path``, so
+a module called ``queue`` here **shadows the standard-library ``queue``** for the
+whole process. Any library that does ``from queue import Queue`` then fails, and
+``anyio`` (which Starlette uses to run synchronous endpoints in a thread pool)
+does exactly that. The symptom was a worker that started cleanly yet answered
+HTTP 500 on every endpoint. The module was renamed so the stdlib name can never
+be shadowed again; do not reintroduce a ``queue.py`` in this directory.
+
 Unlike `worker.supabase_client` (which speaks to Supabase with the *signed-in
 user's* token so Row Level Security applies), this module is for the trusted
 background consumer: it uses the project's **service-role key**, which only ever
@@ -86,7 +95,7 @@ class WorkerQueue:
             raise QueueNotConfigured(
                 "The worker is not configured to consume the queue. Set "
                 "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the worker host's "
-                "environment (see README → Deploying the send worker)."
+                "environment (see README -> Deploying the send worker)."
             )
 
     @property

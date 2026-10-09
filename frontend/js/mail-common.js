@@ -546,4 +546,14 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 10000);
       } catch (error) {
-    
+        toast(error.message, 'error');
+      } finally {
+        button.disabled = false;
+        button.innerHTML = original;
+        refreshIcons(button);
+      }
+    });
+  });
+
+  return modal;
+}

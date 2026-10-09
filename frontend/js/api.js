@@ -15,7 +15,10 @@
 import { requireClient } from './lib/supabase.js';
 import * as templates from './lib/templates-store.js';
 import { DEFAULT_DESIGN, VARIABLE_GUIDE, previewTemplate as renderPreview, isValidEmail, isValidUrl, cleanDesign } from './lib/render.js';
-import { worker, WorkerUnavailableError, workerConfigured, workerIsLocal, workerUnavailableHelp } from './lib/worker.js';
+import {
+  worker, WorkerUnavailableError, workerConfigured, workerIsLocal,
+  workerUnavailableHelp, workerConfig,
+} from './lib/worker.js';
 import { currentUser } from './auth.js';
 import {
   download, recipientsCsv, recipientsJson, historyCsv, historyJson, templateFileName,
@@ -494,6 +497,25 @@ async function loadSettingsRow() {
   return created;
 }
 
+/**
+ * The resolved worker configuration, plus any problem with it.
+ *
+ * `config_problem` is non-empty when the configured URL cannot be used (for
+ * example a stale localhost value in a deployed build). Surfacing it separately
+ * from `error` lets the UI explain a misconfiguration instead of reporting a
+ * service outage — they need different fixes.
+ */
+function workerConfigView() {
+  const config = workerConfig();
+  return {
+    configured: config.configured,
+    local: config.local,
+    url: config.url,
+    config_problem: config.problem,
+    stale_localhost: config.staleLocalhost,
+  };
+}
+
 export async function getSettings() {
   const row = await loadSettingsRow();
   const result = mapSettings(row);
@@ -503,15 +525,16 @@ export async function getSettings() {
     const status = await worker.status();
     result.has_password = Boolean(status?.has_password);
     result.password_mask = result.has_password ? PASSWORD_MASK : '';
-    result.worker = { available: true, error: '', configured: workerConfigured(), local: workerIsLocal(), queue: status?.queue || null };
+    result.worker = { available: true, error: '', ...workerConfigView(), queue: status?.queue || null };
     if (status?.sender_email) result.email = status.sender_email;
     if (status?.sender_name) result.sender_name = status.sender_name;
   } catch (error) {
     result.worker = {
       available: false,
+      // Distinguishes "this build cannot use the configured URL" from "the
+      // service is configured but currently unreachable".
       error: error.message,
-      configured: workerConfigured(),
-      local: workerIsLocal(),
+      ...workerConfigView(),
       queue: null,
     };
   }
@@ -600,21 +623,21 @@ export async function testSmtp() {
 }
 
 export async function workerStatus() {
+  const view = workerConfigView();
   try {
     const status = await worker.status();
-    return { available: true, configured: workerConfigured(), local: workerIsLocal(), ...status };
+    return { available: true, ...view, ...status };
   } catch (error) {
     return {
       available: false,
-      // Distinguishes "this deployment has no worker configured" from "the
-      // worker is configured but currently unreachable" — the UI says something
-      // different (and useful) in each case.
-      configured: workerConfigured(),
-      local: workerIsLocal(),
+      // Distinguishes "this deployment has no usable worker configured" from
+      // "the worker is configured but currently unreachable" — the UI says
+      // something different (and useful) in each case.
+      ...view,
       error: error.message,
       has_password: false,
       sending: false,
-      queue: { configured: workerConfigured(), consumer_online: false, queued: 0, running: 0, last_seen_at: null },
+      queue: { configured: view.configured, consumer_online: false, queued: 0, running: 0, last_seen_at: null },
     };
   }
 }
@@ -990,11 +1013,18 @@ function describeWorkerState(worker) {
   const waiting = Number(worker?.queue?.queued || 0);
   const queuedNote = waiting ? ` ${waiting} campaign(s) are waiting in the queue.` : '';
 
+  // A URL this build cannot use (for example a localhost value left in the
+  // Vercel environment) is a configuration mistake, not an outage. Saying so is
+  // the difference between a fixable message and a misleading one.
+  if (worker?.config_problem) {
+    return worker.config_problem;
+  }
   if (!configured) {
-    return 'Campaigns stay queued because no send worker is configured for this deployment.';
+    return 'Campaigns stay queued in your account because no send worker is configured for this deployment. They are delivered once one is connected.';
   }
   if (!available) {
     if (worker?.local) {
+      // Only reachable when this build is itself served from this machine.
       return 'The send worker is not reachable. For local development, start it with "python worker/main.py".';
     }
     return `The send worker service is not reachable right now.${queuedNote || ' Queued campaigns are delivered automatically when it returns.'}`;

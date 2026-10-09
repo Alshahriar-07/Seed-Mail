@@ -13,7 +13,8 @@
     "preview": "vite preview --port 4173",
     "test": "node --test \"tests/js/*.test.mjs\"",
     "test:rls": "node supabase/tests/rls_isolation.mjs",
-    "check:api": "node tools/check-api.mjs"
+    "check:api": "node tools/check-api.mjs",
+    "check:syntax": "node tools/check-syntax.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4"

@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 import test_worker as tw  # shared fakes from the existing worker suite
 from worker.main import create_app
-from worker.queue import QueueNotConfigured, WorkerQueue, queue_configured
+from worker.campaign_queue import QueueNotConfigured, WorkerQueue, queue_configured
 from worker.queue_worker import QueueConsumer
 from worker.sender import CampaignManager, RunState
 
@@ -302,7 +302,7 @@ def test_consumer_payload_carries_the_snapshot_and_the_owner():
 
 def test_consumer_never_retries_sent_jobs():
     """`jobs()` asks only for pending/failed rows, so `sent` can never be resent."""
-    source = (ROOT / "worker" / "queue.py").read_text(encoding="utf-8")
+    source = (ROOT / "worker" / "campaign_queue.py").read_text(encoding="utf-8")
     assert 'RETRYABLE_JOB_STATUSES = ("pending", "failed")' in source
     assert '"status": f"in.({statuses})"' in source
 

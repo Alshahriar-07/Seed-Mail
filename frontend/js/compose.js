@@ -90,7 +90,7 @@ export async function render(container) {
     return;
   }
   if (connection.capabilities && connection.capabilities.send === false) {
-    bodyEl.innerHTML = `<div class="notice notice-warning">${icon('triangle-warning', 16)}<span>
+    bodyEl.innerHTML = `<div class="notice notice-warning">${icon('triangle-alert', 16)}<span>
       The connected account did not grant permission to send mail. Reconnect Gmail and allow
       “Send email on your behalf” to use Compose.</span></div>`;
     refreshIcons(bodyEl);
@@ -158,7 +158,7 @@ export async function render(container) {
       </div>
 
       <div class="card compose-side">
-        <div class="card-head"><h3>${icon('privacy', 16)} How this is sent</h3></div>
+        <div class="card-head"><h3>${icon('shield', 16)} How this is sent</h3></div>
         <div class="kv"><span>From</span><span>${escapeHtml(connection.email)}</span></div>
         <div class="kv"><span>Channel</span><span>Gmail API (OAuth 2.0)</span></div>
         <p class="hint">Gmail accepts the message and puts it in your real Sent mailbox. A successful

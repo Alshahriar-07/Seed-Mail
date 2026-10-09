@@ -66,7 +66,17 @@ from services.email_service import EmailService  # noqa: E402
 from services.settings_service import settings_service  # noqa: E402
 from worker import config  # noqa: E402
 from worker.auth import AuthError, TokenVerifier  # noqa: E402
-from worker.queue import QueueError, WorkerQueue, queue_configured, supabase_url  # noqa: E402
+
+# Make console output UTF-8 safe before anything is printed. Without this the
+# startup banner could kill the process on a cp1252 Windows console, which the
+# browser then reports as an unreachable worker.
+config.configure_console_encoding()
+from worker.campaign_queue import (  # noqa: E402
+    QueueError,
+    WorkerQueue,
+    queue_configured,
+    supabase_url,
+)
 from worker.sender import CampaignManager  # noqa: E402
 from worker.settings_overrides import SettingsOverrides  # noqa: E402
 from worker.supabase_client import SupabaseRest  # noqa: E402
@@ -301,6 +311,7 @@ def create_app(
                 "campaign_queue": diagnostics["queue_configured"],
                 "gmail_api": diagnostics["gmail_api_configured"],
             },
+            "import_hygiene_ok": diagnostics["import_hygiene_ok"],
             "configuration_problems": diagnostics["problems"],
         }
 
@@ -422,7 +433,7 @@ def start_queue_consumer_thread() -> threading.Thread | None:
         return None
     if not queue_configured():
         print("  Queue consumer: not configured (SUPABASE_SERVICE_ROLE_KEY missing)")
-        print("  Campaigns cannot be sent until it is set. See README → Deploying the send worker.")
+        print("  Campaigns cannot be sent until it is set. See README -> Deploying the send worker.")
         return None
 
     from worker.queue_worker import build_consumer
@@ -456,7 +467,8 @@ def print_configuration() -> None:
         "  Capabilities: "
         f"verify_users={diagnostics['auth_configured']}, "
         f"campaign_queue={diagnostics['queue_configured']}, "
-        f"gmail_api={diagnostics['gmail_api_configured']}"
+        f"gmail_api={diagnostics['gmail_api_configured']}, "
+        f"import_hygiene={diagnostics['import_hygiene_ok']}"
     )
     for problem in diagnostics["problems"]:
         print(f"  ! {problem}")
@@ -470,8 +482,20 @@ def print_configuration() -> None:
 def run() -> None:
     import uvicorn
 
+    # Refuse to serve from a package that shadows the standard library. Without
+    # this the process starts, prints a healthy banner, and answers 500 to every
+    # request — the exact silent failure `worker/queue.py` used to cause. Failing
+    # loudly here turns a mysterious outage into an obvious, named problem.
+    hygiene_problem = config.import_hygiene_problem()
+    if hygiene_problem:
+        print("=" * 66)
+        print("  Seed Code Mail — send worker cannot start")
+        print(f"  {hygiene_problem}")
+        print("=" * 66)
+        raise SystemExit(2)
+
     # Local runs stay on the loopback interface; a hosted deployment sets
-    # WORKER_HOST=0.0.0.0 explicitly (see README → Deploying the send worker).
+    # WORKER_HOST=0.0.0.0 explicitly (see README -> Deploying the send worker).
     host = os.getenv("WORKER_HOST", "127.0.0.1")
     port = int(os.getenv("WORKER_PORT", "8765") or "8765")
     public = host not in ("127.0.0.1", "localhost")

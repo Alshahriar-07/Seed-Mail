@@ -1,6 +1,6 @@
 """Read-only settings view.
 
-Non-secret preferences (sender address, SMTP host/port, delay, timeout…) live
+Non-secret preferences (sender address, SMTP host/port, delay, timeout...) live
 in the user's Supabase account and travel with each campaign request. The Gmail
 App Password lives only in the worker's environment.
 

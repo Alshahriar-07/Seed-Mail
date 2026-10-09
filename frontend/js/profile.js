@@ -20,7 +20,7 @@ import {
   escapeHtml, icon, formatDate, refreshIcons, toast, spinner, confirmDialog,
 } from './ui.js';
 import { refreshTopbar } from './app.js';
-import { bindConnect, connectCard, reauthCard, serverSetupCard } from './mail-common.js';
+import { bindConnect, connectCard, reauthCard, serverSetupCard, startConnect } from './mail-common.js';
 
 const SCOPE_LABELS = {
   'https://www.googleapis.com/auth/gmail.readonly': 'Read your mail (Inbox and Sent)',
@@ -266,8 +266,24 @@ export async function render(container) {
     bindConnect(gmailCard);
     const disconnect = gmailCard.querySelector('#gmail-disconnect');
     if (disconnect) disconnect.addEventListener('click', onDisconnect);
+    // The connected-state card has no `#gmail-connect` button (only Reconnect),
+    // so it gets its own handler that starts the same OAuth flow.
     const reconnect = gmailCard.querySelector('#gmail-reconnect');
-    if (reconnect) reconnect.addEventListener('click', () => gmailCard.querySelector('#gmail-connect')?.click());
+    if (reconnect) {
+      reconnect.addEventListener('click', async () => {
+        const original = reconnect.innerHTML;
+        reconnect.disabled = true;
+        reconnect.innerHTML = spinner('Opening Google');
+        try {
+          await startConnect();
+        } catch (error) {
+          reconnect.disabled = false;
+          reconnect.innerHTML = original;
+          refreshIcons(reconnect);
+          toast(error.message, 'error');
+        }
+      });
+    }
   };
 
   async function onDisconnect() {
