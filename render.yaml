@@ -1,0 +1,55 @@
+# Seed Code Mail — send worker host (Render Blueprint).
+#
+# Deploying THIS file creates the one piece of infrastructure the repository
+# cannot create for itself: a host that keeps the Python worker process alive.
+# Vercel cannot run it (see README §10), and while there is no worker host,
+# campaigns queue in Supabase and wait — the website says so rather than pretending
+# to send.
+#
+#   Render Dashboard → New → Blueprint → pick this repository
+#
+# Secrets are NOT stored here. `sync: false` means Render prompts for each value
+# when the blueprint is created, so nothing sensitive enters Git. Get them from:
+#   SUPABASE_URL               Supabase → Project Settings → API → Project URL
+#   SUPABASE_PUBLISHABLE_KEY   Supabase → Project Settings → API → publishable/anon key
+#   SUPABASE_SERVICE_ROLE_KEY  Supabase → Project Settings → API → service_role key
+#   Email / GAPP_PASS          the sending Gmail address and its 16-character App
+#                              Password (Google Account → Security → App passwords)
+#
+# The frontend must then be pointed at this service:
+#   Vercel → Settings → Environment Variables → VITE_MAIL_WORKER_URL = https://<this-service>.onrender.com
+# and redeployed. Until that is set, the deployed site reports "No send worker is
+# configured for this deployment" — which is the honest answer, not an outage.
+
+services:
+  - type: web
+    name: seed-mail-worker
+    runtime: docker
+    # Build from the repository root: the image needs the shared services/ package
+    # and the root requirements.txt, not just worker/.
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/worker/health
+    autoDeploy: true
+    envVars:
+      - key: WORKER_HOST
+        value: 0.0.0.0
+      - key: WORKER_PORT
+        value: "8765"
+      - key: WORKER_ALLOWED_ORIGINS
+        value: https://mrseedmail.vercel.app,https://seedmail-beta.vercel.app
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: Email
+        sync: false
+      - key: GAPP_PASS
+        sync: false
+      - key: MAX_RETRIES
+        value: "2"
+      - key: SEND_DELAY_SECONDS
+        value: "5"

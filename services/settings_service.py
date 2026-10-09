@@ -83,6 +83,16 @@ def _parse_env(text: str) -> dict[str, str]:
     return values
 
 
+def environment_names() -> tuple[str, ...]:
+    """Every variable name this service may read from the process environment.
+
+    Exposed so callers that need a settings view built from *nothing but* a file
+    — the test fixture, most importantly — can clear exactly the right names
+    instead of guessing.
+    """
+    return tuple(DEFAULTS)
+
+
 def environment_settings() -> dict[str, str]:
     """Recognised settings supplied as process environment variables.
 

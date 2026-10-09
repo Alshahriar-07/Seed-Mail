@@ -20,6 +20,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+def settings_service_module():
+    """The settings module (imported lazily so app.py's imports stay untouched)."""
+    from services import settings_service as module
+
+    return module
+
+
 @pytest.fixture()
 def isolated(tmp_path, monkeypatch):
     import app as app_module
@@ -27,6 +34,17 @@ def isolated(tmp_path, monkeypatch):
     from services.recipient_service import recipient_service
     from services.settings_service import settings_service
     from services.template_service import template_service
+
+    # SettingsService reads the process environment for any key a .env file does
+    # not define, because a hosted worker has no file to read (see README §3.3).
+    # That makes the environment part of the configuration, so a test whose
+    # temporary .env is empty must ALSO have an empty environment — otherwise it
+    # would silently inherit the developer's real .env, which `worker.main`
+    # copies into os.environ via load_dotenv() when an earlier test imports it.
+    # Clearing it here is what makes the fixture's promise — "no real data or
+    # credentials are touched" — true.
+    for name in settings_service_module().environment_names():
+        monkeypatch.delenv(name, raising=False)
 
     settings_service._path = tmp_path / ".env"
     settings_service.reload()

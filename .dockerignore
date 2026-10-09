@@ -1,0 +1,40 @@
+# Build context exclusions for worker/Dockerfile.
+#
+# The image needs only worker/, services/ and requirements.txt. Everything here
+# would otherwise be copied into the build context and slow the upload down; the
+# env files are excluded for a harder reason — secrets must never be BAKED into an
+# image layer, because `docker history` would reveal them to anyone who can pull
+# it. Supply them at run time instead (`docker run --env-file` or the platform's
+# dashboard).
+
+# Secrets — never in an image
+.env
+.env.*
+frontend/.env*
+
+# The website is not part of the worker image
+frontend/
+api/
+backend/
+dist/
+dist-remote/
+node_modules/
+package.json
+package-lock.json
+vite.config.js
+vercel.json
+
+# Local/editor state
+.git/
+.gitignore
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+logs/
+data/
+tests/
+tools/
+*.bat
+README.md

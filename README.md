@@ -178,6 +178,35 @@ browser.
 > un-prefixed `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`. This is the single most
 > common cause of the failure described in §11.
 
+**Where the worker reads these from, in order.** `SUPABASE_*`, `WORKER_*` and
+`WORKER_ALLOWED_ORIGINS` always come from the process environment. The mail
+settings (`Email`, `GAPP_PASS`, `SMTP_*`, the delays) are read from the worker's
+`.env` file when that file defines them, and otherwise from the process
+environment:
+
+1. the worker's `.env` file — the local-development source, and the file the
+   Settings page writes;
+2. the process environment — how every container platform (Docker, Render,
+   Railway, Fly.io, Kubernetes) supplies configuration;
+3. the built-in default.
+
+So a hosted worker needs **no `.env` file at all**: set the variables above in the
+host's dashboard and it is fully configured. Only names this project already knows
+are read (`services/settings_service.py → environment_names()`), so an unrelated
+variable on the machine cannot wander into the mail configuration. Environment
+values are never written back to `.env`, so saving settings from the UI cannot
+spill a platform secret onto a disk. Verify with:
+
+```bash
+curl -s https://your-worker-host/api/worker/health | python -m json.tool
+# "smtp_configured": true   means Email + GAPP_PASS reached the worker
+# "import_hygiene_ok": true means no module shadows the standard library (§11d)
+```
+
+> **The worker is not deployed by deploying the website.** Nothing in this
+> repository can create the host or the host's secrets, and Vercel cannot run it.
+> See §10 and §17 for what remains manual.
+
 There is no default email subject. The subject belongs to each campaign and is
 required when the campaign is created.
 
@@ -947,4 +976,55 @@ hide a genuine mismatch rather than fix it.
    tested against mocked Google APIs, but it cannot be live until the Google Cloud
    OAuth client, the Vercel environment variables, migration `0004` and the worker
    host are configured as described above. Real end-to-end mail delivery has not
-   been exercised from this environment.
+   been exercised from this environment — see §17 for exactly what is outstanding.
+
+---
+
+## 17. Deployment state: what is done, what is not
+
+Written to be checkable rather than reassuring. Everything in the "in the
+repository" column is code that is present, built and tested here. Everything in
+the "still manual" column requires an account, a credential or a dashboard that no
+commit can create.
+
+### In the repository, and verified locally
+
+| Item | Evidence |
+| --- | --- |
+| Vite production build | `npm run build` completes; `npm run check:syntax` parses every module (§11c) |
+| Frontend API resolution | `endpoints.js` + `tests/js/endpoints.test.mjs`: no loopback URL can leak into a deployed build (§11a) |
+| Gmail backend | `api/gmail/*` implemented against the real Gmail API; `npm run check:api` verifies route wiring and auth |
+| Worker API + queue consumer | `python worker/main.py` starts, `/api/worker/health` → 200, authenticated routes → 401 without a token (§11d) |
+| Worker container image | `worker/Dockerfile`, built from the repository root. **Not built here** — Docker is unavailable in this environment; the equivalent file set was executed directly and started correctly |
+| Worker config from host env vars | `smtp_configured` is `true` with only environment variables set and no `.env` (§3.3). Measured before/after: `false` → `true` |
+| Import hygiene | the shadowing module is gone, a guard refuses to start if it returns, `import_hygiene_ok` is reported (§11d) |
+| Python suite | `python -m pytest tests/` — 116 passing |
+| JS suite | `npm test` — crypto, MIME, email-html, endpoints, api-route tests |
+
+### Still manual — required before the product is fully live
+
+1. **The worker host does not exist yet.** Vercel cannot run it. Create it from
+   `render.yaml` (Render → New → Blueprint) or from `worker/Dockerfile` on any host
+   that keeps a process alive, and set the variables in §3.3. **Campaigns cannot be
+   sent until this is done** — they queue and wait.
+2. **`VITE_MAIL_WORKER_URL` must be set on Vercel** to that service's HTTPS URL,
+   then the site redeployed. Until then the deployed site correctly reports that no
+   send worker is configured.
+3. **Vercel environment variables** for the Gmail functions (§3.2): the Google
+   OAuth client id/secret, the token-encryption key, `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY` and the publishable key.
+4. **Google Cloud OAuth client** with the redirect URIs in §5.1, and the consent
+   screen published (or the test-user list populated, which limits it to those
+   accounts).
+5. **Supabase migrations `0001`–`0004`** applied, with Auth's Site URL and
+   redirect list set for both domains (§4.2).
+6. **A real transaction through Gmail** — one connect, one read, one send — has
+   not been performed from this environment and is the last thing to confirm. Until
+   it is, treat "working" as "implemented and unit-tested", not "proven in
+   production".
+
+### Not claimed
+
+No send is ever marked successful before the SMTP relay accepts it; the worker's
+health endpoint never returns a fabricated "online"; and no code path substitutes
+mock mail, seeded inbox contents or fake delivery statuses for the real Gmail API.

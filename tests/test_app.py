@@ -308,6 +308,80 @@ def test_smtp_test_reports_missing_configuration(client):
     assert result["category"] == "configuration"
 
 
+# --- configuration from the process environment ----------------------------
+#
+# A hosted worker has no .env file: Docker, Render, Railway and Fly.io inject the
+# variables README §3.3 documents. SettingsService used to read only the file, so
+# every one of those variables was ignored and the worker reported
+# `smtp_configured: false` however correctly the host was configured.
+
+
+def test_settings_are_read_from_the_environment_when_there_is_no_env_file(tmp_path, monkeypatch):
+    from services.settings_service import SettingsService, environment_names
+
+    for name in environment_names():
+        monkeypatch.delenv(name, raising=False)
+
+    monkeypatch.setenv("Email", "env-sender@example.com")
+    monkeypatch.setenv("GAPP_PASS", "env-app-password")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_PORT", "2525")
+
+    service = SettingsService(env_path=tmp_path / "absent.env")
+
+    assert service.get("Email") == "env-sender@example.com"
+    assert service.get("SMTP_HOST") == "smtp.example.com"
+    assert service.get_int("SMTP_PORT", 465) == 2525
+    assert service.has_password is True
+    assert service.get("GAPP_PASS") == "env-app-password"
+
+
+def test_a_value_in_env_wins_over_the_environment(tmp_path, monkeypatch):
+    from services.settings_service import SettingsService, environment_names
+
+    for name in environment_names():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SMTP_PORT", "2525")
+
+    path = tmp_path / ".env"
+    path.write_text("SMTP_PORT=465\n", encoding="utf-8")
+    service = SettingsService(env_path=path)
+
+    # The file is the explicit local configuration; the environment only fills
+    # the keys the file leaves out.
+    assert service.get_int("SMTP_PORT", 0) == 465
+    assert service.get("SMTP_HOST") == "smtp.gmail.com"  # default, not from env
+
+
+def test_an_environment_password_is_never_written_to_disk(tmp_path, monkeypatch):
+    from services.settings_service import SettingsService, environment_names
+
+    for name in environment_names():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GAPP_PASS", "env-app-password")
+    monkeypatch.setenv("Email", "env-sender@example.com")
+
+    path = tmp_path / ".env"
+    service = SettingsService(env_path=path)
+    service.update({**VALID_SETTINGS, "SENDER_NAME": "New Name"})
+
+    assert path.exists(), "saving non-secret settings still records them"
+    contents = path.read_text(encoding="utf-8")
+    assert "env-app-password" not in contents, "a platform secret must not reach a file"
+    assert service.get("GAPP_PASS") == "env-app-password"
+    assert service.has_password is True
+
+
+def test_unknown_environment_variables_are_ignored(tmp_path, monkeypatch):
+    from services.settings_service import SettingsService, environment_settings
+
+    monkeypatch.setenv("MAIL_SUBJECT", "injected")
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    assert "PATH" not in environment_settings()
+    assert "MAIL_SUBJECT" not in environment_settings()
+
+
 # --- recipients ------------------------------------------------------------
 
 def test_recipient_crud_and_duplicate_detection(client):
