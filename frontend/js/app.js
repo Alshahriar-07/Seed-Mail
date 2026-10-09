@@ -355,6 +355,18 @@ async function onHashChange() {
 
 async function renderAppRoute() {
   if (renderLegalIfRequested()) return;
+
+  // Rendering a private route must also restore the private shell, because the
+  // router is reachable from a public legal document while a session exists
+  // (Settings → Privacy Policy → "Open app", or the browser's Back button).
+  // showLegalPage() hides the app shell; without this the route would render
+  // into a hidden container and the document would appear frozen.
+  if (!currentUser()) {
+    await renderAuthRoute();
+    return;
+  }
+  showApplication();
+
   const hash = location.hash.replace(/^#\/?/, '') || DEFAULT_ROUTE;
   const [name, ...params] = hash.split('/');
   if (!PRIVATE_ROUTES.includes(name)) {

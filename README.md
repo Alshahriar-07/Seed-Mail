@@ -1013,8 +1013,9 @@ commit can create.
 | Worker config from host env vars | `smtp_configured` is `true` with only environment variables set and no `.env` (§3.3). Measured before/after: `false` → `true` |
 | Import hygiene | the shadowing module is gone, a guard refuses to start if it returns, `import_hygiene_ok` is reported (§11d) |
 | Python suite | `python -m pytest tests/` — 116 passing |
-| JS suite | `npm test` — 93 passing: crypto, MIME, email-html, endpoints, api-route and legal-document tests |
+| JS suite | `npm test` — 97 passing: crypto, MIME, email-html, endpoints, api-route, legal-document and app-shell tests |
 | Public legal pages | `/privacy` and `/terms` render without a session; verified in headless Chrome against the built bundle (§19) |
+| Layout visibility | `tests/js/app-shell.test.mjs` pins the invariant that made a signed-in reader's "Open app" link do nothing: showing a legal document hides `#app-shell`, and `renderAppRoute()` must restore it. Not reproduced with a live session here — see §19 |
 | No secret in the front-end bundle | every non-empty value in `.env` was searched for in `dist/`; the only matches are literals that already exist in `frontend/` source (a display name, the default `smtp.gmail.com`, a public GitHub URL). No credential value is present |
 
 ### Still manual — required before the product is fully live
@@ -1151,6 +1152,25 @@ user, on a build with no Supabase configuration, and after a refresh.
   `SHOW_OWNER_ACTION_NOTICE` is set to `false` after they are resolved.
 * These are implementation drafts written from the actual behaviour of the
   application. They are not legal advice, and Google has not reviewed them.
+
+### What is verified, and what is not
+
+Verified here, against the built bundle in headless Chrome: a direct visit to
+`/privacy`, `/terms`, `/privacy-policy` and `/terms-of-service`; the `#/…` forms;
+that a hash always wins over the path, so `/privacy#/inbox` returns to the app;
+that the homepage footer carries both links; and that no credential value from
+`.env` appears anywhere in `dist/`.
+
+Not verified here: the **signed-in** round trip (Settings → Privacy Policy →
+"Open app"). It needs a live account session, which this environment does not
+have and which must not be faked. Its logic is covered by
+`tests/js/app-shell.test.mjs`, which asserts the exact ordering that failed
+before (`renderAppRoute()` restores the shell after the legal guard), but the
+browser round trip itself is a manual step:
+
+1. sign in on the deployment, 2. open Settings, 3. click Privacy Policy,
+4. click "Open app" and confirm the Inbox renders. Any failure is in the
+shell-visibility invariant that test guards.
 
 ---
 
