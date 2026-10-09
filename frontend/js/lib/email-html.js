@@ -18,6 +18,39 @@
 // one rendering philosophy in the project rather than two.
 
 const BLOCKED_TAGS = /<\/?(script|iframe|object|embed|base|form|meta|link)\b[^>]*>/gi;
+const ANCHOR_OPEN = /<a\b([^>]*)>/gi;
+// An inline event handler, e.g. `onclick="…"` or `onerror='…'`.
+const EVENT_HANDLER_ATTR = /\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
+// Attributes that can carry a URL, and the schemes that must never be honoured.
+const URL_ATTR = /\s+(href|src|action|formaction|xlink:href|background)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
+const DANGEROUS_SCHEME = /^(?:javascript|vbscript|file)\s*:/i;
+const DANGEROUS_DATA = /^data\s*:\s*text\/html/i;
+const NAMED_ENTITIES = { colon: ':', tab: '\t', newline: '\n', 'NewLine': '\n' };
+
+/**
+ * Decodes just enough to compare a URL's scheme the way a browser would.
+ *
+ * A scheme can be disguised with character references (`java&#x73;cript:`) or
+ * with the whitespace and control characters a browser strips before resolving a
+ * URL (`java\tscript:`). Testing the raw attribute value would miss both, so the
+ * value is normalised first - only for the comparison; the attribute itself is
+ * never rewritten.
+ */
+function decodeForSchemeTest(value) {
+  return String(value)
+    .replace(/&#x([0-9a-f]+);?/gi, (match, hex) => safeChar(parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (match, decimal) => safeChar(Number(decimal)))
+    .replace(/&([a-z]+);/gi, (match, name) => NAMED_ENTITIES[name.toLowerCase()] ?? match)
+    .replace(/[\u0000-\u0020]/g, '');
+}
+
+function safeChar(codePoint) {
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch (_) {
+    return '';
+  }
+}
 
 function escapeText(value) {
   return String(value ?? '')
@@ -26,9 +59,115 @@ function escapeText(value) {
     .replace(/>/g, '&gt;');
 }
 
-/** Removes constructs that are meaningless or unsafe even inside a sandbox. */
+/**
+ * Removes constructs that are meaningless or unsafe even inside a sandbox.
+ *
+ * This is defence in depth, not the security boundary - the boundary is the
+ * sandboxed, script-free frame the document is rendered in. Stripping here
+ * means a dangerous construct cannot become live if that boundary is ever
+ * loosened, and it removes the two things a sandbox alone leaves behind:
+ *
+ *   * inline event-handler attributes (`onclick`, `onerror`, ...), which are
+ *     inert without allow-scripts but are still executable content;
+ *   * URL-bearing attributes whose scheme is `javascript:`, `vbscript:`,
+ *     `file:` or a `data:text/html` payload. The attribute is dropped rather
+ *     than rewritten, so the element keeps its text and the sender's meaning is
+ *     not replaced with a link to somewhere else.
+ *
+ * Everything else is left exactly as sent: real https links (including their
+ * full query string), tables, styles, images and formatting.
+ */
 export function stripUnsafeMarkup(html) {
-  return String(html ?? '').replace(BLOCKED_TAGS, '');
+  let cleaned = String(html ?? '').replace(BLOCKED_TAGS, '');
+  cleaned = cleaned.replace(EVENT_HANDLER_ATTR, '');
+  cleaned = cleaned.replace(URL_ATTR, (match, name, rawValue) => {
+    const quote = rawValue[0] === '"' || rawValue[0] === "'" ? rawValue[0] : '';
+    const value = quote ? rawValue.slice(1, -1) : rawValue;
+    // A leading colon is not a valid scheme either, so it is stripped before the
+    // comparison rather than being allowed to hide a dangerous one behind it.
+    const probe = decodeForSchemeTest(value).replace(/^[:\s]+/, '');
+    if (DANGEROUS_SCHEME.test(probe) || DANGEROUS_DATA.test(probe)) return '';
+    return match;
+  });
+  return cleaned;
+}
+
+/**
+ * Normalises a Content-ID for comparison.
+ *
+ * Gmail returns inline parts with a `Content-ID` header (`<logo@example>`), and
+ * the HTML refers to it as `cid:logo@example`. Angle brackets, whitespace and
+ * case are all inconsistent between senders, so both sides are normalised
+ * before they are matched.
+ */
+export function normaliseContentId(value) {
+  return String(value ?? '').trim().replace(/^<|>$/g, '').replace(/^cid:/i, '').toLowerCase();
+}
+
+/**
+ * Resolves `src="cid:…"` references to the inline part's bytes.
+ *
+ * Without this, an embedded image is a broken image icon: the browser cannot
+ * fetch `cid:` itself, and the content address is meaningless outside the mail
+ * store. The bytes come from the message payload (the backend already returns
+ * `inline_images`, each with the Gmail attachment id it can be fetched by), and
+ * are inlined as a data URL. Nothing outside the message is contacted, so an
+ * embedded image is not a tracking risk and does not wait for the reader to
+ * choose "Show images".
+ *
+ * @param {string} html
+ * @param {Record<string, string>} inlineImages  content id (or attachment id) → data URL
+ */
+export function resolveInlineImages(html, inlineImages = {}) {
+  const source = String(html ?? '');
+  if (!source || !Object.keys(inlineImages).length) return source;
+
+  const lookup = new Map();
+  for (const [key, value] of Object.entries(inlineImages)) {
+    if (!value) continue;
+    lookup.set(normaliseContentId(key), value);
+  }
+
+  // Only the src attribute is touched: a `cid:` reference written anywhere else
+  // (in a link, in text) is left exactly as the sender wrote it.
+  return source.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*)(["']?)cid:([^"'\s]+)\2/gi,
+    (match, prefix, quote, contentId) => {
+      const resolved = lookup.get(normaliseContentId(contentId));
+      if (!resolved) return match;
+      return `${prefix}${quote}${resolved}${quote}`;
+    },
+  );
+}
+
+/**
+ * Makes links safe to click without altering where they point.
+ *
+ * The reader shows a message in `iframe sandbox="allow-popups
+ * allow-popups-to-escape-sandbox"`, which permits a user-initiated link to open
+ * in a new tab while still blocking scripts, forms and top-level navigation. For
+ * that to be safe the new tab must not keep a handle on this page, so every
+ * anchor gets `rel="noopener noreferrer"` and an explicit `target="_blank"`.
+ *
+ * The href is copied byte for byte - no rewriting, no truncating, no stripping
+ * of query parameters - because a confirmation link is only useful intact.
+ */
+export function addLinkSafety(html) {
+  return String(html ?? '').replace(ANCHOR_OPEN, (match, attributes) => {
+    let next = String(attributes || '');
+    if (!/\btarget\s*=/.test(next)) next += ' target="_blank"';
+    if (/\brel\s*=/.test(next)) {
+      next = next.replace(/\brel\s*=\s*(["'])([^"']*)\1/i, (whole, quote, value) => {
+        const tokens = new Set(String(value).split(/\s+/).filter(Boolean));
+        tokens.add('noopener');
+        tokens.add('noreferrer');
+        return `rel=${quote}${[...tokens].join(' ')}${quote}`;
+      });
+    } else {
+      next += ' rel="noopener noreferrer"';
+    }
+    return `<a${next}>`;
+  });
 }
 
 function contentSecurityPolicy(allowRemote) {
@@ -53,10 +192,10 @@ function contentSecurityPolicy(allowRemote) {
  * @param {string} options.text       plain-text body from Gmail
  * @param {boolean} options.allowRemote  load remote images (user opted in)
  */
-export function buildEmailDocument({ html = '', text = '', allowRemote = false } = {}) {
-  const safeHtml = stripUnsafeMarkup(html);
-  const body = safeHtml.trim()
-    ? safeHtml
+export function buildEmailDocument({ html = '', text = '', allowRemote = false, inlineImages = {} } = {}) {
+  const cleaned = addLinkSafety(resolveInlineImages(stripUnsafeMarkup(html), inlineImages));
+  const body = cleaned.trim()
+    ? cleaned
     : `<pre class="seedmail-plain">${escapeText(text)}</pre>`;
 
   return `<!DOCTYPE html>
@@ -80,6 +219,10 @@ export function buildEmailDocument({ html = '', text = '', allowRemote = false }
   img { max-width: 100%; height: auto; }
   table { max-width: 100%; }
   a { color: #111111; }
+  /* A broken image (an unresolved cid: reference, or a remote image the user has
+     not opted into) otherwise collapses to nothing and the surrounding text
+     shifts. Give it a visible placeholder box instead. */
+  img:not([src]), img[src=""] { min-height: 18px; min-width: 24px; outline: 1px dashed #d4d4d4; }
   pre.seedmail-plain { white-space: pre-wrap; font-family: inherit; margin: 0; }
   blockquote {
     margin: 0 0 0 12px; padding-left: 12px;

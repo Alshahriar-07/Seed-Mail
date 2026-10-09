@@ -168,8 +168,36 @@ export async function revokeToken(token) {
 
 // --- Gmail REST -------------------------------------------------------------
 
+/**
+ * Build a query string, repeating a key once per array entry.
+ *
+ * This matters for exactly one parameter, and it is the one the Inbox depends
+ * on: `metadataHeaders` is a *repeated* parameter in the Gmail API. Passing an
+ * array to `new URLSearchParams(object)` produces a single comma-joined value
+ * (`metadataHeaders=From%2CTo%2CCc%2CSubject%2CDate`), which Google treats as one
+ * header name. A filter that matches no header returns no headers, so a list
+ * page could come back with no `From` and no `Subject` at all - the names and
+ * subjects simply missing from every row, with a 200 response and no error.
+ *
+ * Empty values are omitted rather than sent as `key=`.
+ */
+export function buildQuery(query) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query || {})) {
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (entry !== undefined && entry !== null && entry !== '') params.append(key, String(entry));
+      }
+    } else {
+      params.set(key, String(value));
+    }
+  }
+  return params.toString();
+}
+
 async function gmailRequest(path, { token, method = 'GET', body, query } = {}) {
-  const search = query ? `?${new URLSearchParams(query).toString()}` : '';
+  const search = query ? `?${buildQuery(query)}` : '';
   const response = await googleFetch(`${GMAIL_API}${path}${search}`, {
     method,
     headers: {

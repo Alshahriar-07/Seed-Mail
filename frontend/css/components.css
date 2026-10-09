@@ -19,7 +19,10 @@
 }
 .btn:active { transform: scale(0.975); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.btn i { display: inline-flex; }
+/* `.ui-icon` covers both the `<i>` host and the `<svg>` lucide replaces it with
+   (see frontend/js/ui.js). A bare `i` selector silently stopped applying when
+   the icon host changed, which left icons baseline-aligned against button text. */
+.btn .ui-icon { display: inline-flex; flex: 0 0 auto; }
 
 .btn-primary { background: var(--black); color: var(--white); }
 .btn-primary:hover:not(:disabled) { background: #000; box-shadow: var(--shadow); }
@@ -170,7 +173,7 @@
 }
 .toolbar .input, .toolbar .select { width: auto; }
 .search-input { position: relative; flex: 1; min-width: 180px; max-width: 340px; }
-.search-input i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.search-input .ui-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .search-input .input { padding-left: 34px; }
 
 .chip {

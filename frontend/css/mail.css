@@ -68,7 +68,11 @@
   min-width: 200px;
 }
 
-.search-field i {
+/* `.ui-icon` matches both states of an icon: the `<i>` before lucide runs and
+   the `<svg>` it is replaced with. A plain `i` selector stopped matching the
+   moment lucide v1 swapped the host element, which left the icon in the flex
+   flow and the field misaligned while the input kept its 34px left padding. */
+.search-field .ui-icon {
   position: absolute;
   left: 11px;
   color: var(--muted);
@@ -96,16 +100,24 @@
 }
 
 .mail-row.is-unread {
-  background: #FAFAFA;
+  background: #FBFBFB;
 }
 
+/* One row = identity | subject + preview | date | unread marker.
+
+   The subject owns a full grid track of its own: it used to share one with the
+   preview using flex factors that gave the *preview* more width (1.6fr vs
+   1.1fr), which is why subjects were the first thing to be truncated - at a
+   1024px viewport the subject column measured 140px against 147px for the
+   snippet. The preview now yields to the subject instead (see .mail-preview). */
 .mail-open {
   display: grid;
-  grid-template-columns: minmax(120px, 190px) minmax(140px, 1.1fr) minmax(0, 1.6fr) auto 10px;
+  grid-template-columns: minmax(150px, 230px) minmax(0, 1fr) auto 8px;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 11px 14px;
+  min-height: 44px;
+  padding: 10px 14px;
   border: 0;
   background: transparent;
   text-align: left;
@@ -114,47 +126,110 @@
   cursor: pointer;
 }
 
-.mail-open:hover,
+.mail-open:hover { background: var(--page-bg); }
+
+/* A real focus ring, inset so the list's rounded clip cannot cut it off. The
+   previous rule set `outline: none`, leaving keyboard users with only a
+   background change - invisible on an already-highlighted unread row. */
 .mail-open:focus-visible {
+  outline: 2px solid var(--black);
+  outline-offset: -2px;
   background: var(--page-bg);
-  outline: none;
 }
 
+.mail-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Shrink weighting, not shrink order.
+
+   With an equal `flex-shrink: 1` on both, a long address took over half the
+   shrinkage and cut the sender name down to 70px ('Nadia Okonkwo' measured as
+   truncated) - the exact symptom reported as "sender names are missing or hard
+   to see". Weighting the shrink (1 vs 100) makes the address absorb essentially
+   all of it and disappear first, while the name keeps its natural width. If the
+   name alone is still wider than the track, it is then the only shrinkable item
+   and ellipsises as it should. */
 .mail-who {
-  font-size: 13px;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.mail-addr {
+  flex: 0 100 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-more-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.mail-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .mail-subject {
-  font-size: 13px;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-subject.is-empty { color: var(--muted); font-style: italic; }
+
+/* Fills whatever is left after the subject, and is the first thing to be
+   truncated when there is not enough room. */
+.mail-snippet {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mail-row.is-unread .mail-who,
-.mail-row.is-unread .mail-subject {
-  font-weight: 600;
-}
+.mail-row.is-unread .mail-subject { font-weight: 700; }
 
-.mail-snippet,
 .mail-date {
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-
-.mail-date { text-align: right; }
 
 .mail-unread-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--black);
 }
+
+/* Unread also gets a leading accent bar, which survives on narrow screens where
+   the dot is dropped. */
+.mail-row.is-unread .mail-open { box-shadow: inset 3px 0 0 var(--black); }
 
 .mail-empty-slot {
   list-style: none;
@@ -166,19 +241,26 @@
   padding: 16px 0;
 }
 
+/* Below this width the address is the first thing to go: the name and the
+   subject matter more, and the full address is still in the row's tooltip. */
+@media (max-width: 1100px) {
+  .mail-addr { display: none; }
+  .mail-open { grid-template-columns: minmax(130px, 190px) minmax(0, 1fr) auto 8px; gap: 12px; }
+}
+
 @media (max-width: 760px) {
   .mail-open {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "who date"
-      "subject subject"
-      "snippet snippet";
-    gap: 4px 10px;
+      "identity date"
+      "preview preview";
+    gap: 2px 10px;
+    padding: 10px 12px;
+    min-height: 48px;
   }
-  .mail-who { grid-area: who; }
+  .mail-identity { grid-area: identity; }
   .mail-date { grid-area: date; }
-  .mail-subject { grid-area: subject; }
-  .mail-snippet { grid-area: snippet; }
+  .mail-preview { grid-area: preview; }
   .mail-unread-dot { display: none; }
 }
 
@@ -339,12 +421,23 @@ button.attachment:hover { background: var(--page-bg); }
 .seg-btn + .seg-btn { border-left: 1px solid var(--border); }
 .seg-btn.is-active { background: var(--black); color: var(--white); }
 
+/* The writing area has two modes and they are read differently: plain text is
+   prose (comfortable line length, UI font, 14px), HTML is source code
+   (monospace, 13px). Previously both were monospace, which made ordinary
+   writing look like a code editor. */
 .compose-body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.7;
+  min-height: 260px;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.compose-body[data-mode="html"] {
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.6;
-  min-height: 240px;
-  resize: vertical;
 }
 
 .compose-actions {
@@ -388,7 +481,7 @@ button.attachment:hover { background: var(--page-bg); }
   color: var(--muted);
 }
 
-.scope-list li i { color: var(--success); }
+.scope-list li .ui-icon { color: var(--success); }
 
 .profile-actions {
   display: flex;

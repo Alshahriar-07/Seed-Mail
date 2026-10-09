@@ -137,6 +137,7 @@ export async function render(container) {
         <div class="field">
           <label for="c-body">Message</label>
           <textarea class="input textarea compose-body" id="c-body" rows="14"
+            data-mode="${state.mode}"
             placeholder="Write your message…">${escapeHtml(prefill.text || '')}</textarea>
           <div class="hint" id="c-body-hint">HTML is sent as a multipart message with a plain-text alternative generated for you.</div>
         </div>
@@ -222,6 +223,9 @@ export async function render(container) {
     button.addEventListener('click', () => {
       state.mode = button.dataset.mode;
       bodyEl.querySelectorAll('[data-mode]').forEach((other) => other.classList.toggle('is-active', other === button));
+      // Drives the writing font in CSS: prose is set in the UI font, HTML source
+      // in the monospace font, because the two are read differently.
+      bodyEl.querySelector('#c-body').dataset.mode = state.mode;
       bodyEl.querySelector('#c-body-hint').textContent = state.mode === 'html'
         ? 'HTML is sent as a multipart message with a plain-text alternative generated for you.'
         : 'Plain text is sent as-is, and Gmail will show it in a fixed-width font.';

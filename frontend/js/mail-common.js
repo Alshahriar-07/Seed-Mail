@@ -11,9 +11,12 @@
 //   * `loading` / `empty` / `error` / `list`
 
 import { gmail, GmailError, isNotConfigured } from './lib/gmail.js';
-import { buildEmailDocument, emailPlainText, formatBytes } from './lib/email-html.js';
 import {
-  escapeHtml, icon, formatDate, refreshIcons, skeleton, emptyState, toast, openModal, confirmDialog,
+  buildEmailDocument, emailPlainText, formatBytes, normaliseContentId,
+} from './lib/email-html.js';
+import {
+  escapeHtml, icon, formatDate, formatListDate, refreshIcons, skeleton, emptyState, toast,
+  openModal, confirmDialog,
 } from './ui.js';
 import { navigate } from './app.js';
 
@@ -183,21 +186,60 @@ function addressLine(list) {
   return list.map((entry) => entry.name ? `${entry.name} <${entry.email}>` : entry.email).join(', ');
 }
 
+function first(list) {
+  return Array.isArray(list) && list.length ? list[0] : { name: '', email: '' };
+}
+
+/**
+ * One row of a mailbox list.
+ *
+ * Layout rules, and why they are enforced here rather than in CSS alone:
+ *
+ *   * the **subject** is the primary content of the row, so it is one grid track
+ *     of its own and is never truncated to make room for the preview;
+ *   * the **snippet** is secondary and truncates first (it sits in the same line
+ *     as the subject and gives way to it);
+ *   * Inbox shows the **sender**, Sent shows the **recipient** - never each
+ *     other - with the address as secondary detail when a display name exists,
+ *     and as the primary value when it does not;
+ *   * the date is short (`formatListDate`: time today, "Oct 9" this year) and
+ *     keeps the full timestamp in its `title`.
+ *
+ * Both truncated values also carry a `title`, so the full name/subject is
+ * reachable without opening the message.
+ */
 function messageRow(message, { mailbox }) {
   const subject = message.subject || '(no subject)';
-  const who = mailbox === 'sent'
-    ? addressLine(message.to) || '(no recipient)'
-    : (message.from?.name || message.from?.email || '(unknown sender)');
-  const when = message.internal_date ? formatDate(message.internal_date) : (message.date || '');
+  const snippet = String(message.snippet || '').replace(/\s+/g, ' ').trim();
+
+  const person = mailbox === 'sent' ? first(message.to) : (message.from || { name: '', email: '' });
+  const fallback = mailbox === 'sent' ? '(no recipient)' : '(unknown sender)';
+  const name = person.name || person.email || fallback;
+  // Secondary line: the address, but only when a display name already fills the
+  // primary slot (otherwise the address *is* the primary value, shown once).
+  const secondary = person.name ? String(person.email || '') : '';
+  const more = mailbox === 'sent' && Array.isArray(message.to) && message.to.length > 1
+    ? `+${message.to.length - 1}` : '';
+
+  const when = message.internal_date ? formatListDate(message.internal_date) : (message.date || '');
+  const fullWhen = message.internal_date ? formatDate(message.internal_date) : (message.date || '');
+  const unread = Boolean(message.unread);
+
   return `
-    <li class="mail-row ${message.unread ? 'is-unread' : ''}" data-id="${escapeHtml(message.id)}">
+    <li class="mail-row ${unread ? 'is-unread' : ''}" data-id="${escapeHtml(message.id)}">
       <button class="mail-open" data-open="${escapeHtml(message.id)}"
-        aria-label="Open message: ${escapeHtml(subject)}">
-        <span class="mail-who">${escapeHtml(who)}</span>
-        <span class="mail-subject">${escapeHtml(subject)}</span>
-        <span class="mail-snippet cell-muted">${escapeHtml(message.snippet || '')}</span>
-        <span class="mail-date cell-muted">${escapeHtml(when)}</span>
-        ${message.unread ? '<span class="mail-unread-dot" title="Unread"></span>' : ''}
+        aria-label="${escapeHtml(`${unread ? 'Unread. ' : ''}${mailbox === 'sent' ? 'To' : 'From'} ${name}. ${subject}. ${fullWhen}`)}">
+        <span class="mail-identity">
+          <span class="mail-who" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+          ${more ? `<span class="mail-more-count">${escapeHtml(more)}</span>` : ''}
+          ${secondary ? `<span class="mail-addr" title="${escapeHtml(secondary)}">${escapeHtml(secondary)}</span>` : ''}
+        </span>
+        <span class="mail-preview">
+          <span class="mail-subject ${message.subject ? '' : 'is-empty'}" title="${escapeHtml(subject)}">${escapeHtml(subject)}</span>
+          ${snippet ? `<span class="mail-snippet" title="${escapeHtml(snippet)}">${escapeHtml(snippet)}</span>` : ''}
+        </span>
+        <span class="mail-date" title="${escapeHtml(fullWhen)}">${escapeHtml(when)}</span>
+        <span class="mail-unread-dot"${unread ? '' : ' hidden'} aria-hidden="true"></span>
       </button>
     </li>`;
 }
@@ -384,6 +426,56 @@ export async function renderMailbox(container, {
 
 // --- reader -----------------------------------------------------------------
 
+const INLINE_IMAGE_LIMIT = 5;
+const INLINE_IMAGE_MAX_BYTES = 1_500_000;
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not read the image.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Fetches the message's embedded images and returns `content id -> data URL`.
+ *
+ * Each entry is matched by both its `Content-ID` and its attachment id, so an
+ * HTML part that refers to `cid:` by either form resolves. Failures are skipped
+ * rather than thrown: a message must still open without its images.
+ */
+async function loadInlineImages(message) {
+  const inline = Array.isArray(message?.inline_images) ? message.inline_images : [];
+  const usable = inline
+    .filter((part) => part?.attachment_id && Number(part.size || 0) <= INLINE_IMAGE_MAX_BYTES)
+    .slice(0, INLINE_IMAGE_LIMIT);
+  if (!usable.length) return {};
+
+  const entries = await Promise.all(usable.map(async (part) => {
+    try {
+      const blob = await gmail.downloadAttachment({
+        messageId: message.id,
+        attachmentId: part.attachment_id,
+        filename: part.filename || 'inline-image',
+      });
+      const dataUrl = await blobToDataUrl(blob);
+      return [part, dataUrl];
+    } catch (_) {
+      return null; // an unresolvable part leaves its placeholder, not a failure
+    }
+  }));
+
+  const map = {};
+  for (const entry of entries) {
+    if (!entry) continue;
+    const [part, dataUrl] = entry;
+    if (part.content_id) map[normaliseContentId(part.content_id)] = dataUrl;
+    map[normaliseContentId(part.attachment_id)] = dataUrl;
+  }
+  return map;
+}
+
 /**
  * Opens one message in a modal.
  *
@@ -410,6 +502,12 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
 
   const title = modal.overlay.querySelector('.modal-header h3');
   if (title) title.textContent = message.subject || '(no subject)';
+
+  // Inline (CID) images are part of the message, not a remote fetch, so they are
+  // resolved up front: `cid:` means nothing to a browser, and leaving it alone
+  // renders a broken image where the sender put their logo or chart. Bounded, so
+  // a message with fifty embedded images cannot stall the reader.
+  const inlineImages = await loadInlineImages(message);
 
   const attachments = (message.attachments || []);
   const attachmentsHtml = attachments.length ? `
@@ -449,8 +547,15 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
       ${attachmentsHtml}
     </div>
     <div class="reader-body">
-      <iframe class="reader-frame" id="reader-frame" sandbox="" referrerpolicy="no-referrer"
-        title="Message content"></iframe>
+      <!-- The sandbox token list omits allow-scripts, allow-forms and
+           allow-top-navigation, so the message stays inert. allow-popups (and
+           allow-popups-to-escape-sandbox) is deliberate: it lets a link the user
+           clicks open in a new tab - which is what makes a confirmation link
+           usable - while the message still cannot run script, submit a form, or
+           navigate this application away from itself. -->
+      <iframe class="reader-frame" id="reader-frame"
+        sandbox="allow-popups allow-popups-to-escape-sandbox"
+        referrerpolicy="no-referrer" title="Message content"></iframe>
       <details class="reader-plain">
         <summary>Plain text</summary>
         <pre>${escapeHtml(emailPlainText(message.body || {}))}</pre>
@@ -466,6 +571,7 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
       html: message.body?.html || '',
       text: message.body?.text || '',
       allowRemote,
+      inlineImages,
     }));
   };
   paintFrame();
