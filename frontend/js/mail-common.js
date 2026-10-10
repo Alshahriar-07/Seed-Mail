@@ -1,23 +1,35 @@
 // Seed Code Mail — shared UI for the Gmail workspace (Inbox and Sent)
 //
 // Both mailboxes are the same problem: fetch one page from Gmail, show it, page
-// through it, open a message safely. They share this module so the two pages
+// through it, and read one message. They share this module so the two pages
 // cannot drift apart in behaviour or in how they report a problem.
 //
+// There are two layouts over one container:
+//
+//   * the **list** (`renderMailbox`) — toolbar, rows, paging;
+//   * the **reading view** (`renderReader`) — one message, occupying the main
+//     content area the way Gmail and Outlook do. There is no email-reading modal:
+//     a modal forced the message into a nested scroll box, wasted screen width,
+//     and made the browser's Back button do nothing. The reader is now a real
+//     route (`#/inbox/<message-id>`), so Back returns to the list and a message
+//     is linkable and survives a refresh.
+//
 // Every state is explicit and truthful:
-//   * `setup`       — the server is missing Google/Supabase configuration
-//   * `disconnected`— this user has not connected a Gmail account
-//   * `reauth`      — the grant was revoked or expired
+//   * `setup`        — the server is missing Google/Supabase configuration
+//   * `disconnected` — this user has not connected a Gmail account
+//   * `reauth`       — the grant was revoked or expired
 //   * `loading` / `empty` / `error` / `list`
 
 import { gmail, GmailError, isNotConfigured } from './lib/gmail.js';
 import {
-  buildEmailDocument, emailPlainText, formatBytes, normaliseContentId,
+  buildEmailDocument, dataUrlFromBase64, emailPlainText, formatBytes,
+  hasRemoteImages, normaliseContentId,
 } from './lib/email-html.js';
 import {
   escapeHtml, icon, formatDate, formatListDate, refreshIcons, skeleton, emptyState, toast,
-  openModal, confirmDialog,
+  confirmDialog,
 } from './ui.js';
+import { avatarMarkup, refreshAvatars } from './lib/avatar.js';
 import { navigate } from './app.js';
 
 const PAGE_SIZE = 25;
@@ -37,6 +49,26 @@ export function takeComposePrefill() {
   const draft = composePrefill;
   composePrefill = null;
   return draft;
+}
+
+// --- search memory ----------------------------------------------------------
+// Reading a message is a separate route, so the list is rendered again when the
+// user comes back. The search query is remembered per mailbox, otherwise opening
+// one message would silently discard what the user had searched for — the
+// opposite of "preserve the inbox search when returning from an opened message".
+
+const lastQuery = { inbox: '', sent: '' };
+
+// The message the user opened last, per mailbox.
+//
+// The reader is its own route, so no row can be "selected" while a message is on
+// screen. What this does provide is the thing a user actually wants from a
+// selected-row highlight: on returning to the list, the message they just read is
+// marked, so they can see where they were without hunting for it.
+const lastOpened = { inbox: '', sent: '' };
+
+function mailboxLabel(mailbox) {
+  return mailbox === 'sent' ? 'Sent' : 'Inbox';
 }
 
 // --- setup / connection cards ----------------------------------------------
@@ -147,7 +179,7 @@ export function bindConnect(container, { onError } = {}) {
   });
 }
 
-/** Renders the right card for a status payload. Returns true if it handled it. */
+/** Renders the right card for a status payload. Returns the state it handled. */
 export function renderConnectionState(container, status) {
   if (!status?.configured && status?.configuration && !status.configuration.gmail_configured) {
     container.innerHTML = serverSetupCard(status.configuration);
@@ -179,6 +211,12 @@ export function mailboxStatusStrip(connection) {
     </div>`;
 }
 
+function errorNotice(message, { retryId = '' } = {}) {
+  return `
+    <div class="notice notice-error">${icon('alert-circle', 16)}<span>${escapeHtml(message)}</span></div>
+    ${retryId ? `<div class="reader-error-actions"><button class="btn btn-secondary" id="${retryId}">Try again</button></div>` : ''}`;
+}
+
 // --- mailbox list -----------------------------------------------------------
 
 function addressLine(list) {
@@ -195,18 +233,16 @@ function first(list) {
  *
  * Layout rules, and why they are enforced here rather than in CSS alone:
  *
- *   * the **subject** is the primary content of the row, so it is one grid track
- *     of its own and is never truncated to make room for the preview;
- *   * the **snippet** is secondary and truncates first (it sits in the same line
- *     as the subject and gives way to it);
- *   * Inbox shows the **sender**, Sent shows the **recipient** - never each
- *     other - with the address as secondary detail when a display name exists,
+ *   * the **subject** is the primary content of the row, so it owns a grid track
+ *     of its own and never truncates to make room for the preview;
+ *   * the **snippet** is secondary and yields to the subject;
+ *   * Inbox shows the **sender**, Sent shows the **recipient** — never each
+ *     other — with the address as secondary detail when a display name exists,
  *     and as the primary value when it does not;
+ *   * the avatar is initials, not a picture: Gmail's API does not expose a
+ *     sender's profile photo (see frontend/js/lib/avatar.js);
  *   * the date is short (`formatListDate`: time today, "Oct 9" this year) and
  *     keeps the full timestamp in its `title`.
- *
- * Both truncated values also carry a `title`, so the full name/subject is
- * reachable without opening the message.
  */
 function messageRow(message, { mailbox }) {
   const subject = message.subject || '(no subject)';
@@ -224,11 +260,13 @@ function messageRow(message, { mailbox }) {
   const when = message.internal_date ? formatListDate(message.internal_date) : (message.date || '');
   const fullWhen = message.internal_date ? formatDate(message.internal_date) : (message.date || '');
   const unread = Boolean(message.unread);
+  const current = lastOpened[mailbox] === message.id;
 
   return `
-    <li class="mail-row ${unread ? 'is-unread' : ''}" data-id="${escapeHtml(message.id)}">
+    <li class="mail-row ${unread ? 'is-unread' : ''} ${current ? 'is-current' : ''}" data-id="${escapeHtml(message.id)}"${current ? ' aria-current="true"' : ''}>
       <button class="mail-open" data-open="${escapeHtml(message.id)}"
         aria-label="${escapeHtml(`${unread ? 'Unread. ' : ''}${mailbox === 'sent' ? 'To' : 'From'} ${name}. ${subject}. ${fullWhen}`)}">
+        ${avatarMarkup({ name: person.name, email: person.email }, { size: 34, kind: 'sender', className: 'mail-avatar' })}
         <span class="mail-identity">
           <span class="mail-who" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
           ${more ? `<span class="mail-more-count">${escapeHtml(more)}</span>` : ''}
@@ -253,8 +291,11 @@ function appendMessages(listEl, messages, { mailbox, append }) {
 }
 
 /**
- * The full mailbox experience: status strip, search, list, paging, and the
- * reader. `load` is `gmail.inbox` or `gmail.sent`.
+ * The mailbox experience: status strip, search, list and paging.
+ *
+ * Opening a message is a *navigation* (`#/<mailbox>/<id>`), not an overlay. The
+ * router re-renders this function on the way back, and `lastQuery` restores the
+ * search that was in effect.
  */
 export async function renderMailbox(container, {
   mailbox,
@@ -263,10 +304,13 @@ export async function renderMailbox(container, {
   emptyMessage,
   iconName,
 }) {
+  container.classList.remove('view-reader');
+  const label = mailboxLabel(mailbox);
+
   container.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>${mailbox === 'sent' ? 'Sent' : 'Inbox'}</h2>
+        <h2>${label}</h2>
         <p>${mailbox === 'sent'
           ? 'Messages Gmail accepted for delivery from your connected account.'
           : 'Your real Gmail inbox, read through the Gmail API.'}</p>
@@ -289,7 +333,7 @@ export async function renderMailbox(container, {
   try {
     status = await gmail.status();
   } catch (error) {
-    bodyEl.innerHTML = `<div class="notice notice-error">${icon('alert-circle', 16)}<span>${escapeHtml(error.message)}</span></div>`;
+    bodyEl.innerHTML = errorNotice(error.message);
     refreshIcons(bodyEl);
     return;
   }
@@ -297,9 +341,7 @@ export async function renderMailbox(container, {
   const state = renderConnectionState(bodyEl, status);
   if (state) {
     statusEl.innerHTML = '';
-    if (state === 'setup' || state === 'disconnected' || state === 'reauth') {
-      bindConnect(bodyEl);
-    }
+    bindConnect(bodyEl);
     refreshIcons(bodyEl);
     return;
   }
@@ -317,11 +359,14 @@ export async function renderMailbox(container, {
 
   // --- search + list --------------------------------------------------------
 
+  let query = lastQuery[mailbox] || '';
+
   bodyEl.innerHTML = `
     <div class="toolbar mail-toolbar">
       <div class="search-field">
         ${icon('search', 16)}
-        <input class="input" id="mail-search" type="search" placeholder="${mailbox === 'sent' ? 'Search sent mail' : 'Search mail'}"
+        <input class="input" id="mail-search" type="search" value="${escapeHtml(query)}"
+          placeholder="${mailbox === 'sent' ? 'Search sent mail' : 'Search mail'}"
           aria-label="Search ${mailbox === 'sent' ? 'sent mail' : 'mail'}">
       </div>
       <button class="btn btn-secondary btn-sm" id="mail-search-go">Search</button>
@@ -337,14 +382,13 @@ export async function renderMailbox(container, {
   const listEl = bodyEl.querySelector('#mail-list');
   const moreBtn = bodyEl.querySelector('#mail-more');
   let pageToken = '';
-  let query = '';
   let loading = false;
 
   const showEmpty = () => {
     listEl.innerHTML = '';
     listEl.insertAdjacentHTML('beforeend', `<li class="mail-empty-slot">${emptyState({
       title: query ? 'No matching messages' : emptyTitle,
-      message: query ? `Nothing in ${mailbox === 'sent' ? 'Sent' : 'the Inbox'} matches “${query}”.` : emptyMessage,
+      message: query ? `Nothing in ${label} matches “${query}”.` : emptyMessage,
       iconName,
     })}</li>`);
     refreshIcons(listEl);
@@ -362,6 +406,7 @@ export async function renderMailbox(container, {
       if (!append && !(page.messages || []).length) showEmpty();
       moreBtn.hidden = !pageToken;
       refreshIcons(listEl);
+      refreshAvatars(listEl);
     } catch (error) {
       moreBtn.hidden = true;
       const message = error instanceof GmailError ? error.message : String(error.message || error);
@@ -390,23 +435,22 @@ export async function renderMailbox(container, {
     }
   };
 
-  bodyEl.querySelector('#mail-search-go').addEventListener('click', () => {
-    query = bodyEl.querySelector('#mail-search').value.trim();
+  const applyQuery = (next) => {
+    query = String(next || '').trim();
+    lastQuery[mailbox] = query;
     pageToken = '';
     fetchPage({});
+  };
+
+  bodyEl.querySelector('#mail-search-go').addEventListener('click', () => {
+    applyQuery(bodyEl.querySelector('#mail-search').value);
   });
   bodyEl.querySelector('#mail-search').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      query = event.target.value.trim();
-      pageToken = '';
-      fetchPage({});
-    }
+    if (event.key === 'Enter') applyQuery(event.target.value);
   });
   bodyEl.querySelector('#mail-search-clear').addEventListener('click', () => {
     bodyEl.querySelector('#mail-search').value = '';
-    query = '';
-    pageToken = '';
-    fetchPage({});
+    applyQuery('');
   });
   moreBtn.addEventListener('click', () => fetchPage({ append: true }));
   container.querySelector('#mail-refresh').addEventListener('click', () => {
@@ -416,50 +460,74 @@ export async function renderMailbox(container, {
 
   // Rows are rendered as buttons; one delegated listener keeps this cheap for
   // long lists and survives "load more".
+  //
+  // The click *navigates* rather than opening an overlay: the route change is what
+  // makes the browser's Back button return to this exact list, with the search
+  // still applied.
   listEl.addEventListener('click', (event) => {
     const button = event.target.closest('[data-open]');
-    if (button) openReader(button.dataset.open, { mailbox, onChanged: () => fetchPage({}) });
+    if (!button) return;
+    // Remembered so the row is marked when the user comes back to this list.
+    lastOpened[mailbox] = button.dataset.open;
+    navigate(mailbox, [button.dataset.open]);
   });
 
   await fetchPage({});
 }
 
-// --- reader -----------------------------------------------------------------
+// --- reading view -----------------------------------------------------------
 
-const INLINE_IMAGE_LIMIT = 5;
-const INLINE_IMAGE_MAX_BYTES = 1_500_000;
+const INLINE_IMAGE_LIMIT = 8;
+const INLINE_IMAGE_MAX_BYTES = 2_000_000;
 
-function blobToDataUrl(blob) {
+function blobToDataUrl(blob, mimeType) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      // `FileReader` reports the Blob's own type (`application/octet-stream` for
+      // the download endpoint), and a `data:application/octet-stream` URL is not
+      // rendered as an image. Re-label it with the MIME type the message part
+      // actually declared.
+      const corrected = mimeType && /^data:[^;]*;/.test(result)
+        ? result.replace(/^data:[^;]*;/, `data:${mimeType};`)
+        : result;
+      resolve(corrected);
+    };
     reader.onerror = () => reject(reader.error || new Error('Could not read the image.'));
     reader.readAsDataURL(blob);
   });
 }
 
 /**
- * Fetches the message's embedded images and returns `content id -> data URL`.
+ * Resolves the message's embedded images to renderable `data:` URLs.
  *
- * Each entry is matched by both its `Content-ID` and its attachment id, so an
- * HTML part that refers to `cid:` by either form resolves. Failures are skipped
- * rather than thrown: a message must still open without its images.
+ * Each entry is keyed by both its `Content-ID` and its attachment id, so an HTML
+ * part that refers to `cid:` by either form resolves. A part that already came
+ * with its bytes is used directly; the rest are fetched through the authorized
+ * attachment endpoint. A failure is skipped rather than thrown: a message must
+ * still open without its images, and the reader marks the image it could not load.
  */
 async function loadInlineImages(message) {
   const inline = Array.isArray(message?.inline_images) ? message.inline_images : [];
   const usable = inline
-    .filter((part) => part?.attachment_id && Number(part.size || 0) <= INLINE_IMAGE_MAX_BYTES)
+    .filter((part) => part && (part.attachment_id || part.data))
     .slice(0, INLINE_IMAGE_LIMIT);
   if (!usable.length) return {};
 
   const entries = await Promise.all(usable.map(async (part) => {
+    if (part.data) {
+      const direct = dataUrlFromBase64(part.mime_type, part.data);
+      return direct ? [part, direct] : null;
+    }
+    if (Number(part.size || 0) > INLINE_IMAGE_MAX_BYTES) return null;
     try {
       const blob = await gmail.downloadAttachment({
         messageId: message.id,
         attachmentId: part.attachment_id,
         filename: part.filename || 'inline-image',
       });
-      const dataUrl = await blobToDataUrl(blob);
+      const dataUrl = await blobToDataUrl(blob, part.mime_type);
       return [part, dataUrl];
     } catch (_) {
       return null; // an unresolvable part leaves its placeholder, not a failure
@@ -470,102 +538,187 @@ async function loadInlineImages(message) {
   for (const entry of entries) {
     if (!entry) continue;
     const [part, dataUrl] = entry;
+    if (!dataUrl) continue;
     if (part.content_id) map[normaliseContentId(part.content_id)] = dataUrl;
-    map[normaliseContentId(part.attachment_id)] = dataUrl;
+    if (part.attachment_id) map[normaliseContentId(part.attachment_id)] = dataUrl;
   }
   return map;
 }
 
 /**
- * Opens one message in a modal.
- *
- * The body is shown in `iframe sandbox=""` with remote content blocked, so a
- * message can neither run script nor report that it was opened. "Show images"
- * is an explicit, per-message choice by the user.
+ * Opens one message. Kept as a small function (rather than the reader itself) so
+ * every caller goes through the same route.
  */
-export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
-  const modal = openModal({
-    title: 'Loading message…',
-    size: 'xl',
-    body: skeleton(5),
-    actions: [{ label: 'Close', variant: 'btn-secondary' }],
-  });
+export function openReader(id, { mailbox = 'inbox' } = {}) {
+  return navigate(mailbox, [id]);
+}
+
+function recipientBlock(message, { mailbox }) {
+  const rows = [];
+  if (mailbox === 'sent') {
+    if (message.from?.email || message.from?.name) {
+      rows.push(`<div class="reader-row"><span class="reader-label">From</span>
+        <span>${escapeHtml(message.from?.name ? `${message.from.name} <${message.from.email}>` : message.from.email)}</span></div>`);
+    }
+  }
+  rows.push(`<div class="reader-row"><span class="reader-label">To</span>
+    <span>${escapeHtml(addressLine(message.to) || '—')}</span></div>`);
+  if (message.cc?.length) {
+    rows.push(`<div class="reader-row"><span class="reader-label">Cc</span>
+      <span>${escapeHtml(addressLine(message.cc))}</span></div>`);
+  }
+  return rows.join('');
+}
+
+function attachmentsBlock(attachments) {
+  if (!attachments.length) return '';
+  return `
+    <div class="reader-attachments">
+      <div class="reader-attachments-title">${icon('paperclip', 15)} ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}</div>
+      <div class="attachment-list">
+        ${attachments.map((file) => `
+          <button class="attachment" data-attachment="${escapeHtml(file.attachment_id)}"
+            data-filename="${escapeHtml(file.filename)}">
+            ${icon('paperclip', 15)}
+            <span class="attachment-name">${escapeHtml(file.filename)}</span>
+            <span class="cell-muted">${escapeHtml(formatBytes(file.size))}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+/**
+ * The full-page reading view for one message.
+ *
+ * Rendered into the main content area — the sidebar, header and navigation stay
+ * exactly where they are. The message body is shown in an `iframe sandbox=""`
+ * with remote content blocked, so a message can neither run script nor report
+ * that it was opened; "Show images" is an explicit, per-message choice.
+ *
+ * Returns a cleanup function the router calls when leaving the route.
+ */
+export async function renderReader(container, { mailbox = 'inbox', messageId } = {}) {
+  const label = mailboxLabel(mailbox);
+  container.classList.add('view-reader');
+
+  container.innerHTML = `
+    <div class="reader-view" id="reader-view">
+      <div class="reader-toolbar">
+        <button class="btn btn-ghost btn-sm reader-back" id="reader-back">
+          ${icon('arrow-left', 16)} Back to ${label}
+        </button>
+        <div class="grow"></div>
+        <span class="reader-status cell-muted" id="reader-status" aria-live="polite"></span>
+      </div>
+      <div id="reader-shell">${skeleton(5)}</div>
+    </div>`;
+
+  refreshIcons(container);
+  container.querySelector('#reader-back').addEventListener('click', () => navigate(mailbox));
+
+  const shell = container.querySelector('#reader-shell');
+  const statusEl = container.querySelector('#reader-status');
+  const cleanup = () => container.classList.remove('view-reader');
+
+  let status;
+  try {
+    status = await gmail.status();
+  } catch (error) {
+    shell.innerHTML = errorNotice(error.message);
+    refreshIcons(shell);
+    return cleanup;
+  }
+
+  const state = renderConnectionState(shell, status);
+  if (state) {
+    bindConnect(shell);
+    refreshIcons(shell);
+    return cleanup;
+  }
+
+  const connection = status.connection;
+  const canModify = connection.capabilities?.modify === true;
+  const canSend = connection.capabilities?.send !== false;
 
   let message;
   try {
-    ({ message } = await gmail.message(id));
+    ({ message } = await gmail.message(messageId));
   } catch (error) {
-    modal.body.innerHTML = `<div class="notice notice-error">${icon('alert-circle', 16)}<span>${escapeHtml(error.message)}</span></div>`;
-    refreshIcons(modal.body);
-    return;
+    shell.innerHTML = errorNotice(error.message, { retryId: 'reader-retry' });
+    shell.querySelector('#reader-retry')?.addEventListener('click', () => renderReader(container, { mailbox, messageId }));
+    refreshIcons(shell);
+    return cleanup;
   }
 
-  const title = modal.overlay.querySelector('.modal-header h3');
-  if (title) title.textContent = message.subject || '(no subject)';
-
-  // Inline (CID) images are part of the message, not a remote fetch, so they are
-  // resolved up front: `cid:` means nothing to a browser, and leaving it alone
-  // renders a broken image where the sender put their logo or chart. Bounded, so
-  // a message with fifty embedded images cannot stall the reader.
+  const isSent = mailbox === 'sent';
+  const person = isSent ? first(message.to) : (message.from || { name: '', email: '' });
+  const subject = message.subject || '(no subject)';
+  const remoteImages = hasRemoteImages(message.body?.html || '');
   const inlineImages = await loadInlineImages(message);
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
 
-  const attachments = (message.attachments || []);
-  const attachmentsHtml = attachments.length ? `
-    <div class="attachment-list">
-      ${attachments.map((file) => `
-        <button class="attachment" data-attachment="${escapeHtml(file.attachment_id)}"
-          data-filename="${escapeHtml(file.filename)}">
-          ${icon('paperclip', 15)}
-          <span class="attachment-name">${escapeHtml(file.filename)}</span>
-          <span class="cell-muted">${escapeHtml(formatBytes(file.size))}</span>
-        </button>`).join('')}
-    </div>` : '';
+  const dateIso = message.internal_date || message.date || '';
+  const dateLabel = message.internal_date ? formatDate(message.internal_date) : (message.date || '—');
 
-  modal.body.innerHTML = `
-    <div class="reader-meta">
-      <div class="reader-row">
-        <span class="reader-label">From</span>
-        <span>${escapeHtml(message.from?.name ? `${message.from.name} <${message.from.email}>` : (message.from?.email || '—'))}</span>
-      </div>
-      <div class="reader-row">
-        <span class="reader-label">To</span>
-        <span>${escapeHtml(addressLine(message.to) || '—')}</span>
-      </div>
-      ${message.cc?.length ? `<div class="reader-row"><span class="reader-label">Cc</span>
-        <span>${escapeHtml(addressLine(message.cc))}</span></div>` : ''}
-      <div class="reader-row">
-        <span class="reader-label">Date</span>
-        <span>${escapeHtml(message.internal_date ? formatDate(message.internal_date) : message.date || '—')}</span>
-      </div>
+  shell.innerHTML = `
+    <article class="card reader-card">
+      <header class="reader-head">
+        ${avatarMarkup({ name: person.name, email: person.email }, { size: 46, kind: 'sender' })}
+        <div class="reader-head-main">
+          <h1 class="reader-subject" id="reader-subject">${escapeHtml(subject)}</h1>
+          <div class="reader-head-line">
+            <span class="reader-from">${escapeHtml(person.name || person.email || '(unknown sender)')}</span>
+            ${person.name && person.email ? `<span class="reader-from-addr">&lt;${escapeHtml(person.email)}&gt;</span>` : ''}
+          </div>
+          <div class="reader-recipients" id="reader-recipients"></div>
+        </div>
+        <time class="reader-date" datetime="${escapeHtml(dateIso)}" title="${escapeHtml(dateLabel)}">${escapeHtml(formatListDate(dateIso) || dateLabel)}</time>
+      </header>
+
       <div class="reader-actions">
-        <button class="btn btn-ghost btn-sm" id="reader-read-toggle">
+        ${canSend ? `<button class="btn btn-secondary btn-sm" id="reader-reply">${icon('reply', 15)} Reply</button>
+        <button class="btn btn-ghost btn-sm" id="reader-forward">${icon('forward', 15)} Forward</button>` : ''}
+        ${remoteImages ? `<button class="btn btn-ghost btn-sm" id="reader-images">${icon('image', 15)} Show images</button>` : ''}
+        ${canModify ? `<button class="btn btn-ghost btn-sm" id="reader-read-toggle">
           ${icon(message.unread ? 'mail-open' : 'mail', 15)} ${message.unread ? 'Mark as read' : 'Mark as unread'}
         </button>
-        <button class="btn btn-ghost btn-sm" id="reader-images">${icon('image', 15)} Show images</button>
-        <button class="btn btn-secondary btn-sm" id="reader-reply">${icon('reply', 15)} Reply</button>
+        <button class="btn btn-ghost btn-sm" id="reader-archive">${icon('archive', 15)} Archive</button>
+        <button class="btn btn-ghost btn-sm danger" id="reader-delete">${icon('trash-2', 15)} Delete</button>` : ''}
       </div>
-      ${attachmentsHtml}
-    </div>
-    <div class="reader-body">
-      <!-- The sandbox token list omits allow-scripts, allow-forms and
-           allow-top-navigation, so the message stays inert. allow-popups (and
-           allow-popups-to-escape-sandbox) is deliberate: it lets a link the user
-           clicks open in a new tab - which is what makes a confirmation link
-           usable - while the message still cannot run script, submit a form, or
-           navigate this application away from itself. -->
-      <iframe class="reader-frame" id="reader-frame"
-        sandbox="allow-popups allow-popups-to-escape-sandbox"
-        referrerpolicy="no-referrer" title="Message content"></iframe>
+
+      <div id="reader-banner"></div>
+
+      <div class="reader-body">
+        <!-- The sandbox token list omits allow-scripts, allow-forms,
+             allow-same-origin and allow-top-navigation, so the message stays
+             inert and cannot reach this application or its session.
+             allow-popups (and allow-popups-to-escape-sandbox) is deliberate: it
+             lets a link the user clicks open in a new tab - which is what makes a
+             confirmation link usable - while the message still cannot run script,
+             submit a form, or navigate this application away from itself. -->
+        <iframe class="reader-frame" id="reader-frame"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          referrerpolicy="no-referrer" title="Message content"></iframe>
+      </div>
+
       <details class="reader-plain">
         <summary>Plain text</summary>
         <pre>${escapeHtml(emailPlainText(message.body || {}))}</pre>
       </details>
-    </div>`;
 
-  refreshIcons(modal.body);
+      ${attachmentsBlock(attachments)}
+    </article>`;
 
-  const frame = modal.body.querySelector('#reader-frame');
+  shell.querySelector('#reader-recipients').innerHTML = recipientBlock(message, { mailbox });
+  refreshIcons(shell);
+  refreshAvatars(shell);
+
+  // --- body ------------------------------------------------------------------
+
+  const frame = shell.querySelector('#reader-frame');
+  const banner = shell.querySelector('#reader-banner');
   let allowRemote = false;
+
   const paintFrame = () => {
     frame.setAttribute('srcdoc', buildEmailDocument({
       html: message.body?.html || '',
@@ -574,42 +727,101 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
       inlineImages,
     }));
   };
-  paintFrame();
 
-  // Opening a message marks it read in Gmail — only when the account actually
-  // granted the modify scope, and never for a message already read.
-  if (message.unread && mailbox === 'inbox') {
+  const paintBanner = () => {
+    if (!remoteImages || allowRemote) {
+      banner.innerHTML = '';
+      return;
+    }
+    banner.innerHTML = `
+      <div class="notice reader-image-notice">${icon('shield', 16)}<span>
+        Images in this message are stored on the sender's server, so they stay blocked until you
+        choose <strong>Show images</strong> — loading one would tell the sender that you opened the
+        message, and from where.</span></div>`;
+    refreshIcons(banner);
+  };
+
+  paintFrame();
+  paintBanner();
+
+  // Opening a message marks it read in Gmail — only when the account granted the
+  // modify scope, and never for a message that is already read.
+  if (message.unread && !isSent && canModify) {
     gmail.setRead(message.id, true).then(() => {
       message.unread = false;
-      const toggle = modal.body.querySelector('#reader-read-toggle');
-      if (toggle) toggle.innerHTML = `${icon('mail', 15)} Mark as unread`;
-      refreshIcons(modal.body);
-      if (onChanged) onChanged();
+      const toggle = shell.querySelector('#reader-read-toggle');
+      if (toggle) {
+        toggle.innerHTML = `${icon('mail', 15)} Mark as unread`;
+        refreshIcons(toggle);
+      }
     }).catch(() => {
-      // Not fatal: the message is shown either way. The toggle still works if
-      // the permission allows it, and reports if it does not.
+      // Not fatal: the message is shown either way, and the toggle still works if
+      // the permission allows it and reports it if not.
     });
   }
 
-  modal.body.querySelector('#reader-read-toggle').addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
+  const setBusy = (selector, busy, label_) => {
+    const button = shell.querySelector(selector);
+    if (!button) return null;
+    if (busy) {
+      button.dataset.label = button.innerHTML;
+      button.disabled = true;
+      button.innerHTML = `<span class="spinner"></span> ${escapeHtml(label_)}`;
+      refreshIcons(button);
+    } else {
+      button.disabled = false;
+      if (button.dataset.label) button.innerHTML = button.dataset.label;
+    }
+    return button;
+  };
+
+  shell.querySelector('#reader-read-toggle')?.addEventListener('click', async () => {
+    const nextRead = Boolean(message.unread);
+    const button = setBusy('#reader-read-toggle', true, nextRead ? 'Marking' : 'Updating');
     try {
-      const nextRead = Boolean(message.unread);
       await gmail.setRead(message.id, nextRead);
       message.unread = !nextRead;
+      delete button.dataset.label;
       button.innerHTML = `${icon(message.unread ? 'mail-open' : 'mail', 15)} ${message.unread ? 'Mark as read' : 'Mark as unread'}`;
       refreshIcons(button);
       toast(nextRead ? 'Marked as read in Gmail.' : 'Marked as unread in Gmail.', 'success');
-      if (onChanged) onChanged();
     } catch (error) {
+      setBusy('#reader-read-toggle', false);
       toast(error.message, 'error');
-    } finally {
-      button.disabled = false;
     }
   });
 
-  modal.body.querySelector('#reader-images').addEventListener('click', async (event) => {
+  shell.querySelector('#reader-archive')?.addEventListener('click', async () => {
+    setBusy('#reader-archive', true, 'Archiving');
+    try {
+      await gmail.archive(message.id);
+      toast('Archived. The message left the Inbox and stays in All Mail.', 'success');
+      // Navigating back re-reads the list from Gmail, so the row is gone.
+      navigate(mailbox);
+    } catch (error) {
+      setBusy('#reader-archive', false);
+      toast(error.message, 'error');
+    }
+  });
+
+  shell.querySelector('#reader-delete')?.addEventListener('click', async () => {
+    const ok = await confirmDialog(
+      'Move this message to the Trash? Gmail keeps it for 30 days, so this is recoverable.',
+      { title: 'Delete message', confirmLabel: 'Move to Trash', danger: true },
+    );
+    if (!ok) return;
+    setBusy('#reader-delete', true, 'Deleting');
+    try {
+      await gmail.trash(message.id);
+      toast('Moved to Trash in Gmail.', 'success');
+      navigate(mailbox);
+    } catch (error) {
+      setBusy('#reader-delete', false);
+      toast(error.message, 'error');
+    }
+  });
+
+  shell.querySelector('#reader-images')?.addEventListener('click', async (event) => {
     const ok = await confirmDialog(
       'Load remote images from this message? The sender will be able to see that you opened it, along with your IP address.',
       { title: 'Show remote images', confirmLabel: 'Show images' },
@@ -617,13 +829,15 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
     if (!ok) return;
     allowRemote = true;
     paintFrame();
-    event.currentTarget.disabled = true;
-    event.currentTarget.innerHTML = `${icon('image', 15)} Images shown`;
-    refreshIcons(event.currentTarget);
+    paintBanner();
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.innerHTML = `${icon('image', 15)} Images shown`;
+    refreshIcons(button);
+    statusEl.textContent = 'Remote images loaded for this message.';
   });
 
-  modal.body.querySelector('#reader-reply').addEventListener('click', () => {
-    const subject = message.subject || '';
+  shell.querySelector('#reader-reply')?.addEventListener('click', () => {
     setComposePrefill({
       to: message.from?.email || '',
       subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`,
@@ -631,11 +845,21 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
         emailPlainText(message.body || {}).split('\n').map((line) => `> ${line}`).join('\n')
       }`,
     });
-    modal.close();
     navigate('compose');
   });
 
-  modal.body.querySelectorAll('[data-attachment]').forEach((button) => {
+  shell.querySelector('#reader-forward')?.addEventListener('click', () => {
+    setComposePrefill({
+      to: '',
+      subject: /^fwd:/i.test(subject) ? subject : `Fwd: ${subject}`,
+      text: `\n\n---------- Forwarded message ----------\nFrom: ${person.name ? `${person.name} <${person.email}>` : person.email || ''}\nDate: ${dateLabel}\nSubject: ${subject}\n\n${
+        emailPlainText(message.body || {})
+      }`,
+    });
+    navigate('compose');
+  });
+
+  shell.querySelectorAll('[data-attachment]').forEach((button) => {
     button.addEventListener('click', async () => {
       const original = button.innerHTML;
       button.disabled = true;
@@ -664,5 +888,5 @@ export async function openReader(id, { mailbox = 'inbox', onChanged } = {}) {
     });
   });
 
-  return modal;
+  return cleanup;
 }

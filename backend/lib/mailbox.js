@@ -82,31 +82,82 @@ export async function listMailbox(token, { label, query = '', pageToken = '', ma
   };
 }
 
+/** The value of one MIME header on a part (case-insensitive, first match). */
+/** Joins body parts, dropping empty and exactly duplicated ones. */
+function uniqueJoin(parts) {
+  const seen = new Set();
+  const unique = [];
+  for (const part of parts) {
+    const value = String(part || '').trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    unique.push(value);
+  }
+  return unique.join('\n').trim();
+}
+
+function headerValue(part, name) {
+  const headers = Array.isArray(part?.headers) ? part.headers : [];
+  const wanted = String(name).toLowerCase();
+  const found = headers.find((header) => String(header?.name || '').toLowerCase() === wanted);
+  return found ? String(found.value ?? '') : '';
+}
+
+const IMAGE_MIME = /^image\//i;
+
+/**
+ * Walks the MIME tree of a Gmail message payload, collecting the parts the
+ * reader needs.
+ *
+ * Order matters here and it used to be wrong. Gmail returns an embedded picture
+ * (a logo, a chart, a signature image) as a part that has **both** a
+ * `Content-ID` header and a `filename` — "image001.png" is the usual one. The
+ * previous classification tested `filename && attachmentId` first, so every
+ * embedded image landed in `attachments` and never in `inline`; the HTML still
+ * said `src="cid:image001.png"`, nothing could resolve it, and the message
+ * rendered with a broken-image icon where the sender's logo was. A part is now
+ * classified as inline when it is an image that carries a Content-ID (or an
+ * explicit `Content-Disposition: inline`), regardless of its filename.
+ */
 function walkParts(part, collector) {
   if (!part) return;
   const mimeType = String(part.mimeType || '');
   const body = part.body || {};
   const filename = String(part.filename || '');
+  const attachmentId = String(body.attachmentId || '');
+  const data = String(body.data || '');
+  const size = Number(body.size || 0);
 
-  if (filename && body.attachmentId) {
-    collector.attachments.push({
-      attachment_id: String(body.attachmentId),
-      filename,
-      mime_type: mimeType || 'application/octet-stream',
-      size: Number(body.size || 0),
-    });
-  } else if (mimeType === 'text/plain' && body.data) {
-    collector.text.push(decodeBase64Url(body.data));
-  } else if (mimeType === 'text/html' && body.data) {
-    collector.html.push(decodeBase64Url(body.data));
-  } else if (mimeType.startsWith('image/') && body.attachmentId) {
-    // Inline images are attachments too; the reader resolves them on demand.
-    collector.inline.push({
-      attachment_id: String(body.attachmentId),
-      content_id: String(part.headers?.find?.((h) => String(h.name).toLowerCase() === 'content-id')?.value || ''),
-      mime_type: mimeType,
-      size: Number(body.size || 0),
-    });
+  if (mimeType === 'text/plain' && data) {
+    collector.text.push(decodeBase64Url(data));
+  } else if (mimeType === 'text/html' && data) {
+    collector.html.push(decodeBase64Url(data));
+  } else if (attachmentId || (filename && data)) {
+    const contentId = headerValue(part, 'content-id');
+    const disposition = headerValue(part, 'content-disposition').toLowerCase();
+    const inline = IMAGE_MIME.test(mimeType)
+      && (Boolean(contentId) || disposition.startsWith('inline') || !filename);
+
+    if (inline) {
+      collector.inline.push({
+        attachment_id: attachmentId,
+        content_id: contentId,
+        mime_type: mimeType || 'image/png',
+        filename,
+        size,
+        // Small embedded parts arrive with their bytes already decoded in the
+        // payload. Passing them on saves a second round trip through Gmail; a
+        // larger one only carries its attachment id and is fetched on demand.
+        data: attachmentId ? '' : data,
+      });
+    } else {
+      collector.attachments.push({
+        attachment_id: attachmentId,
+        filename: filename || 'attachment',
+        mime_type: mimeType || 'application/octet-stream',
+        size,
+      });
+    }
   }
 
   (part.parts || []).forEach((child) => walkParts(child, collector));
@@ -145,8 +196,12 @@ export async function readMessage(token, id) {
     body: {
       // Prefer a real plain-text part; fall back to '' so the client can derive
       // readable text from the HTML rather than showing raw markup.
-      text: collector.text.join('\n').trim(),
-      html: collector.html.join('\n').trim(),
+      //
+      // Exact duplicates are dropped: a nested multipart/alternative can repeat
+      // the same body part, and concatenating both would render the message
+      // twice.
+      text: uniqueJoin(collector.text),
+      html: uniqueJoin(collector.html),
     },
     attachments: collector.attachments,
     inline_images: collector.inline,

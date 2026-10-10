@@ -27,6 +27,139 @@ const DANGEROUS_SCHEME = /^(?:javascript|vbscript|file)\s*:/i;
 const DANGEROUS_DATA = /^data\s*:\s*text\/html/i;
 const NAMED_ENTITIES = { colon: ':', tab: '\t', newline: '\n', 'NewLine': '\n' };
 
+// --- images ------------------------------------------------------------------
+//
+// Three different kinds of `<img>` reach this module and they need three
+// different treatments:
+//
+//   1. an inline part, already resolved to a `data:` URL → always renderable;
+//   2. an external `https://…` image → valid, but only loaded once the user opts
+//      in (a single remote image tells the sender the message was opened);
+//   3. a URL that cannot load at all — an unresolved `cid:`, or a *relative* path
+//      like `/images/logo.png`. A relative address has no meaning outside the
+//      sender's own web server, and inside this application it would silently
+//      resolve against **our** origin: the sender's link rewritten into a broken
+//      application URL, which is the defect this guards against.
+//
+// Category 3 is neutralised, and remote images are neutralised until the user
+// asks for them, by substituting a small inline placeholder that keeps the
+// element's size and explains itself on hover. Nothing else about the message is
+// altered, and "Show images" re-renders the original markup so a real image is
+// what the reader finally sees.
+
+// A neutral grey picture glyph, inline so it needs no network request and is
+// allowed by the document's CSP (`img-src data:`).
+const PLACEHOLDER_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='80' "
+  + "viewBox='0 0 120 80'%3E%3Crect width='120' height='80' fill='%23f4f4f5'/%3E"
+  + "%3Cpath d='M22 60l20-24 15 18 11-13 24 19z' fill='%23d4d4d8'/%3E"
+  + "%3Ccircle cx='40' cy='24' r='7' fill='%23d4d4d8'/%3E%3C/svg%3E";
+
+const IMG_TAG = /<img\b[^>]*>/gi;
+// An attribute value, quoted with either style or left bare. All three forms are
+// used in real mail, and a bare `src` is just as live as a quoted one — so it is
+// read, not skipped.
+const SRC_ATTR = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+const IMAGE_DATA_URL = /^data:image\//i;
+const SUPPORTED_IMAGE_TYPE = /^image\/(?:png|jpe?g|gif|webp|bmp|avif|tiff|svg\+xml|x-icon)$/;
+
+function escapeAttribute(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** The value of one attribute in a tag, or '' when it is absent. */
+function tagAttribute(tag, name) {
+  const match = String(tag).match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+  if (!match) return '';
+  return String(match[1] ?? match[2] ?? match[3] ?? '');
+}
+
+/** The `src` of an `<img>` tag, quoted or bare. */
+function imageSrc(tag) {
+  const match = String(tag).match(SRC_ATTR);
+  if (!match) return '';
+  return String(match[1] ?? match[2] ?? match[3] ?? '').trim();
+}
+
+/** True for an image addressed on another host (`https://`, `http://`, `//`). */
+export function isRemoteImageUrl(value) {
+  return /^(?:https?:)?\/\//i.test(String(value ?? '').trim());
+}
+
+/**
+ * True when a message body references at least one image on a remote host, so
+ * the reader can offer "Show images" only when it would actually do something.
+ */
+export function hasRemoteImages(html) {
+  const tags = String(html ?? '').match(IMG_TAG) || [];
+  return tags.some((tag) => isRemoteImageUrl(imageSrc(tag)));
+}
+
+/**
+ * Builds a `data:` URL for an inline image part.
+ *
+ * The content type matters: a data URL carries its own MIME type, and
+ * `data:application/octet-stream;base64,…` (which is what the attachment
+ * download endpoint returns) is not a type a browser will render as an image —
+ * resolving `cid:` to that produced a *still-broken* image, just with the correct
+ * bytes. Only image types are accepted here; anything else returns '' and leaves
+ * the sender's reference untouched.
+ */
+export function dataUrlFromBase64(mimeType, base64) {
+  const type = String(mimeType || '').toLowerCase().split(';')[0].trim();
+  if (!SUPPORTED_IMAGE_TYPE.test(type)) return '';
+  const payload = String(base64 || '').replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  if (!payload) return '';
+  return `data:${type};base64,${payload}`;
+}
+
+/** Replaces an image tag with a sized, self-explaining placeholder. */
+function placeholderTag(tag, reason) {
+  const original = tagAttribute(tag, 'src');
+  const width = tagAttribute(tag, 'width');
+  const height = tagAttribute(tag, 'height');
+  const style = tagAttribute(tag, 'style');
+  const alt = tagAttribute(tag, 'alt');
+  const title = `${reason}${original ? ` — ${original}` : ''}`;
+
+  return `<img class="seedmail-image-pending" src="${PLACEHOLDER_IMAGE}"`
+    + (width ? ` width="${escapeAttribute(width)}"` : '')
+    + (height ? ` height="${escapeAttribute(height)}"` : '')
+    + (style ? ` style="${escapeAttribute(style)}"` : '')
+    + ` alt="${escapeAttribute(alt || 'Image')}"`
+    + ` title="${escapeAttribute(title)}"`
+    + (original ? ` data-seedmail-original-src="${escapeAttribute(original)}"` : '')
+    + '>';
+}
+
+/**
+ * Substitutes a placeholder for every `<img>` that cannot be loaded in the
+ * current mode. Everything else — including every valid `https://` URL when the
+ * user has allowed remote content — is passed through byte for byte.
+ */
+export function markUnavailableImages(html, { allowRemote = false } = {}) {
+  return String(html ?? '').replace(IMG_TAG, (tag) => {
+    const src = imageSrc(tag);
+
+    // Already inline bytes (an embedded part, or a data: image the sender used):
+    // always renderable, and never a tracking risk.
+    if (IMAGE_DATA_URL.test(src)) return tag;
+    if (!src) return placeholderTag(tag, 'This image has no usable source');
+    if (/^cid:/i.test(src)) {
+      return placeholderTag(tag, 'This embedded image could not be read from the message');
+    }
+    if (isRemoteImageUrl(src)) {
+      if (allowRemote) return tag;
+      return placeholderTag(tag, 'Remote image not loaded yet — choose Show images');
+    }
+    return placeholderTag(tag, 'This image uses a relative address that cannot be loaded');
+  });
+}
+
 /**
  * Decodes just enough to compare a URL's scheme the way a browser would.
  *
@@ -193,7 +326,12 @@ function contentSecurityPolicy(allowRemote) {
  * @param {boolean} options.allowRemote  load remote images (user opted in)
  */
 export function buildEmailDocument({ html = '', text = '', allowRemote = false, inlineImages = {} } = {}) {
-  const cleaned = addLinkSafety(resolveInlineImages(stripUnsafeMarkup(html), inlineImages));
+  // Order matters: strip unsafe markup, resolve `cid:` to real bytes, then decide
+  // what can actually be displayed in this pass.
+  const cleaned = addLinkSafety(markUnavailableImages(
+    resolveInlineImages(stripUnsafeMarkup(html), inlineImages),
+    { allowRemote },
+  ));
   const body = cleaned.trim()
     ? cleaned
     : `<pre class="seedmail-plain">${escapeText(text)}</pre>`;
@@ -217,6 +355,17 @@ export function buildEmailDocument({ html = '', text = '', allowRemote = false, 
     overflow-wrap: anywhere;
   }
   img { max-width: 100%; height: auto; }
+  /* A substituted placeholder (a blocked remote image, an unresolved cid:, or a
+     relative URL that can never load) keeps the sender's layout instead of
+     collapsing to a broken-image icon. The reason is in its title attribute. */
+  img.seedmail-image-pending {
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    border-radius: 4px;
+    object-fit: contain;
+    min-height: 60px;
+    min-width: 80px;
+  }
   table { max-width: 100%; }
   a { color: #111111; }
   /* A broken image (an unresolved cid: reference, or a remote image the user has

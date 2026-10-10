@@ -36,5 +36,5 @@ logs/
 data/
 tests/
 tools/
-*.bat
+start.bat
 README.md

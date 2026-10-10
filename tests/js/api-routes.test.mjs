@@ -389,6 +389,36 @@ test('modify requires an explicit read flag and reports Gmail failure honestly',
   assert.ok(calls.some((entry) => entry.url.includes('/m1/modify')));
 });
 
+test('archive and trash perform real Gmail changes, and an unknown action is refused', async () => {
+  setConfig(CONFIG);
+  const calls = mockFetch({
+    'gmail_connections': () => new Response(JSON.stringify([connectionRow()]), { status: 200 }),
+    '/m1/modify': () => new Response(JSON.stringify({ id: 'm1' }), { status: 200 }),
+    '/m1/trash': () => new Response(JSON.stringify({ id: 'm1', labelIds: ['TRASH'] }), { status: 200 }),
+  });
+
+  const archived = await call(modifyRoute, { method: 'POST', headers: bearer(), body: { id: 'm1', action: 'archive' } });
+  assert.equal(archived.statusCode, 200);
+  assert.equal(archived.json().action, 'archive');
+  const modifyCall = calls.find((entry) => entry.url.includes('/m1/modify'));
+  assert.deepEqual(
+    JSON.parse(modifyCall.body),
+    { addLabelIds: [], removeLabelIds: ['INBOX'] },
+    'archiving removes the INBOX label — a real change in Gmail',
+  );
+
+  const trashed = await call(modifyRoute, { method: 'POST', headers: bearer(), body: { id: 'm1', action: 'trash' } });
+  assert.equal(trashed.statusCode, 200);
+  assert.ok(
+    calls.some((entry) => entry.method === 'POST' && entry.url.includes('/m1/trash')),
+    'deleting moves the message to Gmail’s Trash',
+  );
+
+  const unknown = await call(modifyRoute, { method: 'POST', headers: bearer(), body: { id: 'm1', action: 'delete-forever' } });
+  assert.equal(unknown.statusCode, 400, 'an unimplemented action must not silently succeed');
+  assert.equal(unknown.json().code, 'invalid_body');
+});
+
 test('a Gmail quota error is reported as a rate limit, not a generic failure', async () => {
   setConfig(CONFIG);
   mockFetch({

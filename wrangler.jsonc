@@ -1,0 +1,75 @@
+// Seed Code Mail — Cloudflare Workers configuration
+// ============================================================================
+// WHY THIS FILE EXISTS
+//
+// `npx wrangler deploy` was failing with:
+//
+//     [ERROR] Error parsing file: /opt/buildhome/repo/vite.config.js
+//
+// That was not a bad Vite config and not an auth/permission problem. With no
+// wrangler configuration in the repository, Wrangler could not tell what to
+// deploy, so it fell back to its **autoconfig** path and tried to detect a
+// framework. It identified this project as Vite (vite.config.js + the Vite
+// dependency), and Vite's detector asks "does this Vite config use the
+// Cloudflare plugin?" by running the file through Wrangler's own *JSONC*
+// parser. `vite.config.js` is JavaScript, so the parse failed and Wrangler
+// aborted before it ever looked at the repository contents.
+//
+// Declaring the deployment target here means autoconfig never runs: Wrangler
+// reads this file, and nothing in it is guessed from vite.config.js.
+//
+// WHAT THIS DEPLOYS — AND WHAT IT DOES NOT
+//
+// This repository contains exactly ONE Cloudflare-compatible artifact: the
+// built static frontend (`npm run build` → ./dist). This file deploys that, as
+// Workers Static Assets.
+//
+// It does NOT deploy the campaign send worker in ./worker. That worker is
+// FastAPI + uvicorn on top of `smtplib.SMTP_SSL`, a background consumer thread
+// and a file-backed settings store. Cloudflare Workers cannot run it:
+//   * no raw TCP sockets  → smtplib / ssl cannot open an SMTP connection at all;
+//   * no long-lived process or threads → no queue consumer loop, no heartbeat;
+//   * no writable filesystem → services/storage.py and the .env reader fail;
+//   * fastapi / uvicorn / pydantic / httpx / python-dotenv are not part of the
+//     Pyodide-based Python Workers runtime.
+// SMTP delivery is the worker's entire purpose, so this is a hard blocker, not
+// a configuration detail. See the README section "Campaign execution and the
+// send worker" for the host that is meant to run it.
+//
+// CONSEQUENCE OF DEPLOYING THE FRONTEND HERE
+//
+// A Cloudflare copy of the site is a static mirror only. It has no Gmail API
+// (`/api/gmail/*` is a Vercel function) and no send worker, so Inbox, Compose,
+// Sent and campaign delivery cannot work there. It is viable for previewing the
+// UI; Vercel remains the production frontend. Do not point a user-facing domain
+// at it.
+//
+// If you do not want a Cloudflare frontend deployment at all, deleting this
+// file and removing the deploy command from the Cloudflare project returns the
+// repository to having no Cloudflare configuration — which is also a valid
+// state, since nothing here must run on Cloudflare.
+//
+// If you DO use it, set the build-time variables below in the Cloudflare
+// project's build environment (names only; the values are the same public
+// Vite values already set on Vercel):
+//   VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SITE_URL,
+//   VITE_API_BASE_URL (optional), VITE_MAIL_WORKER_URL
+// ============================================================================
+{
+  // Must match the Worker name in the Cloudflare project if you intend to
+  // update that existing project rather than create a new Worker.
+  "name": "seed-mail-frontend",
+  "compatibility_date": "2026-10-10",
+
+  // Static assets only: there is deliberately no "main" entry point, because
+  // there is no Worker script in this repository to deploy.
+  "assets": {
+    "directory": "./dist",
+    // The SPA is hash-routed, so "/" and "/assets/*" are sufficient. This
+    // matches the rewrite in vercel.json that keeps real deep links such as
+    // /privacy working on refresh. A consequence worth knowing: an unknown
+    // path (including /api/gmail/*) returns index.html, and the app already
+    // reports that condition precisely rather than pretending the API answered.
+    "not_found_handling": "single-page-application"
+  }
+}

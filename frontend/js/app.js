@@ -6,9 +6,10 @@ import { supabaseConfigured } from './lib/supabase.js';
 import { requestPersistence } from './lib/templates-store.js';
 import {
   bootstrapAuth, onAuthChange, renderAuth, normaliseAuthRoute,
-  currentUser, displayName, signOut, isRecoveryPending,
+  currentUser, displayName, signOut, isRecoveryPending, avatarUrl,
   renderAuthLoading, renderAuthInitFailure,
 } from './auth.js';
+import { avatarInner, refreshAvatars, safeImageUrl } from './lib/avatar.js';
 import * as inbox from './inbox.js';
 import * as compose from './compose.js';
 import * as sent from './sent.js';
@@ -281,7 +282,21 @@ export async function refreshTopbar() {
   const avatar = document.getElementById('profile-avatar');
   if (nameEl) nameEl.textContent = name;
   if (emailEl) emailEl.textContent = email;
-  if (avatar) avatar.textContent = (String(name).trim()[0] || '?').toUpperCase();
+  if (avatar) {
+    // The avatar is the *authenticated* user's: a real picture only when the
+    // account actually has one (see auth.js → avatarUrl), and their initials
+    // otherwise. It is re-rendered only when something changed, so the 60-second
+    // topbar refresh does not reload the image every minute.
+    const picture = safeImageUrl(avatarUrl());
+    const signature = `${name}|${email}|${picture}`;
+    if (avatar.dataset.signature !== signature) {
+      avatar.dataset.signature = signature;
+      avatar.className = `avatar avatar-account${picture ? ' has-image' : ''}`;
+      avatar.dataset.avatar = '';
+      avatar.innerHTML = avatarInner({ name, email }, { src: picture });
+      refreshAvatars(avatar);
+    }
+  }
 
   const indicator = document.getElementById('smtp-indicator');
   const label = document.querySelector('.smtp-label');

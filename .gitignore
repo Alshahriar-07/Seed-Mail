@@ -14,6 +14,9 @@ npm-debug.log*
 # Vercel
 .vercel/
 
+# Cloudflare / Wrangler (the deploy command's own scratch directory)
+.wrangler/
+
 # Virtual environments
 .venv/
 venv/
@@ -39,4 +42,4 @@ Thumbs.db
 # Temp files created by the atomic writer
 .*.tmp
 *.corrupt
-*.bat
+start.bat

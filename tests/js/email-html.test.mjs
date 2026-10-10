@@ -10,8 +10,12 @@ import assert from 'node:assert/strict';
 import {
   addLinkSafety,
   buildEmailDocument,
+  dataUrlFromBase64,
   emailPlainText,
   formatBytes,
+  hasRemoteImages,
+  isRemoteImageUrl,
+  markUnavailableImages,
   normaliseContentId,
   resolveInlineImages,
   stripUnsafeMarkup,
@@ -183,4 +187,105 @@ test('a message with only a plain-text part still renders without an HTML body',
   assert.match(document, /<pre class="seedmail-plain">/);
   assert.match(document, /line one/);
   assert.ok(!document.includes('<tags>'), 'plain text must stay escaped');
+});
+
+// --- image pipeline ----------------------------------------------------------
+// Three defects are pinned here:
+//   1. an inline part resolved to `data:application/octet-stream` (which the
+//      attachment endpoint reports) is not an image, so the "resolved" inline
+//      picture was still broken;
+//   2. a blocked remote image rendered as a broken-image icon with no
+//      explanation;
+//   3. a relative image URL silently resolved against THIS application's origin -
+//      the sender's link rewritten into a broken application URL.
+
+test('a data URL is built with the image type the message declared', () => {
+  assert.equal(dataUrlFromBase64('image/png', 'AAAA'), 'data:image/png;base64,AAAA');
+  assert.equal(dataUrlFromBase64('IMAGE/JPEG; charset=binary', 'AA=='), 'data:image/jpeg;base64,AA==');
+  assert.equal(dataUrlFromBase64('image/png', 'QU-_'), 'data:image/png;base64,QU+/', 'URL-safe input is converted back');
+  assert.equal(dataUrlFromBase64('application/octet-stream', 'AAAA'), '', 'a non-image type must not be used as an image');
+  assert.equal(dataUrlFromBase64('text/html', 'AAAA'), '');
+  assert.equal(dataUrlFromBase64('image/png', ''), '');
+});
+
+test('remote images are detected so the reader can offer Show images', () => {
+  assert.equal(hasRemoteImages('<img src="https://cdn.example/logo.png">'), true);
+  assert.equal(hasRemoteImages('<img src="//cdn.example/logo.png">'), true);
+  assert.equal(hasRemoteImages('<img src="data:image/png;base64,AAAA">'), false);
+  assert.equal(hasRemoteImages('<img src="cid:logo@example">'), false);
+  assert.equal(hasRemoteImages('<p>no images</p>'), false);
+  assert.equal(isRemoteImageUrl('https://x.example/a.png'), true);
+  assert.equal(isRemoteImageUrl('/assets/a.png'), false);
+});
+
+test('a blocked remote image becomes an explained placeholder, not a broken icon', () => {
+  const html = '<p>logo <img src="https://ci3.googleusercontent.com/logo.png" width="120" height="40" alt="Logo"></p>';
+  const blocked = markUnavailableImages(html, { allowRemote: false });
+
+  assert.ok(!/(^|[\s])src="https:\/\//.test(blocked), 'no live remote src may remain while blocked');
+  assert.match(blocked, /class="seedmail-image-pending"/);
+  assert.match(blocked, /width="120"/, 'the sender layout is preserved');
+  assert.match(blocked, /height="40"/);
+  assert.match(blocked, /alt="Logo"/);
+  assert.match(blocked, /title="[^"]*Show images/, 'the placeholder says how to load it');
+  assert.match(blocked, /data-seedmail-original-src="https:\/\/ci3\.googleusercontent\.com\/logo\.png"/,
+    'the original URL is kept for reference');
+  assert.ok(blocked.includes('<p>logo '), 'surrounding content is untouched');
+});
+
+test('allowing remote images restores the URL byte for byte, query string included', () => {
+  const href = 'https://images.example.com/open.gif?u=abc%2Fdef&id=42&t=1';
+  const allowed = markUnavailableImages(`<img src="${href}" width="1" height="1">`, { allowRemote: true });
+  assert.ok(allowed.includes(`src="${href}"`), 'the URL must survive exactly');
+  assert.ok(!allowed.includes('seedmail-image-pending'));
+});
+
+test('a relative image URL is never resolved against this application', () => {
+  for (const src of ['/images/logo.png', './logo.png', '../logo.png', 'logo.png']) {
+    const marked = markUnavailableImages(`<img src="${src}">`, { allowRemote: true });
+    assert.match(marked, /class="seedmail-image-pending"/, `${src} cannot be loaded and must be marked`);
+    assert.match(marked, /relative address/);
+    assert.ok(!/(^|[\s])src="\//.test(marked), 'a relative URL must never reach the document as a live src');
+  }
+});
+
+test('an unresolved cid: reference is marked, and a resolved one renders', () => {
+  const unresolved = markUnavailableImages('<img src="cid:nope@example">');
+  assert.match(unresolved, /seedmail-image-pending/);
+  assert.match(unresolved, /could not be read from the message/);
+
+  const resolved = markUnavailableImages('<img src="data:image/png;base64,AAAA">');
+  assert.match(resolved, /src="data:image\/png;base64,AAAA"/);
+  assert.ok(!resolved.includes('seedmail-image-pending'));
+});
+
+test('an unquoted src is read too, since a bare src is just as live', () => {
+  const marked = markUnavailableImages('<img src=/images/logo.png>', { allowRemote: true });
+  assert.match(marked, /seedmail-image-pending/);
+  assert.match(marked, /relative address/);
+  assert.ok(!/(^|[\s])src=\/images/.test(marked), 'the bare relative URL must not survive as a live src');
+
+  const remote = markUnavailableImages('<img src=https://cdn.example/a.png>', { allowRemote: false });
+  assert.match(remote, /Show images/);
+});
+
+test('the whole document blocks remote images by default and explains why', () => {
+  const document = buildEmailDocument({
+    html: '<img src="https://tracker.example/pixel.gif"><img src="data:image/png;base64,AAAA">',
+  });
+  assert.ok(!/(^|[\s])src="https:\/\/tracker\.example/.test(document), 'no live request to the tracker');
+  assert.match(document, /data-seedmail-original-src="https:\/\/tracker\.example\/pixel\.gif"/);
+  assert.match(document, /data:image\/png;base64,AAAA/, 'inline bytes still render');
+  assert.match(document, /img-src data:/, 'the CSP still refuses remote sources while blocked');
+  assert.match(document, /script-src 'none'/, 'allowing images never allows scripts');
+});
+
+test('scripts stay blocked in the document once images are allowed', () => {
+  const document = buildEmailDocument({
+    html: '<img src="https://cdn.example/logo.png"><script>alert(1)</script>',
+    allowRemote: true,
+  });
+  assert.match(document, /img-src \* data:/);
+  assert.ok(!/<script/i.test(document));
+  assert.match(document, /src="https:\/\/cdn\.example\/logo\.png"/);
 });

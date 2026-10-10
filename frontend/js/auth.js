@@ -338,6 +338,22 @@ export function displayName() {
   );
 }
 
+/**
+ * The signed-in user's profile picture, when one actually exists.
+ *
+ * This comes only from the account's own Supabase auth metadata (`avatar_url` or
+ * `picture`), which is populated when an account signed in through a provider
+ * that supplies one. Nothing is constructed here: no hashed-email avatar service,
+ * no guessed URL. When it is empty — which is the normal case for an
+ * email/password account — the UI shows the user's initials instead, which is a
+ * real fallback rather than a picture of somebody else.
+ */
+export function avatarUrl() {
+  const metadata = currentSession?.user?.user_metadata || {};
+  const candidate = metadata.avatar_url || metadata.picture || '';
+  return typeof candidate === 'string' ? candidate.trim() : '';
+}
+
 /** When the account was created, if the session exposes it. */
 export function accountCreatedAt() {
   return currentSession?.user?.created_at || currentProfile?.created_at || '';

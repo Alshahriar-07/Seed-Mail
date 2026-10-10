@@ -279,6 +279,30 @@ export async function modifyMessage(token, id, { addLabelIds = [], removeLabelId
   });
 }
 
+/**
+ * Remove a message from the Inbox by removing its INBOX label (Gmail's
+ * "Archive"). The message stays in All Mail and under every other label, which
+ * is exactly what Gmail's own Archive action does. Requires `gmail.modify`.
+ */
+export async function archiveMessage(token, id) {
+  return modifyMessage(token, id, { removeLabelIds: ['INBOX'] });
+}
+
+/**
+ * Move a message to the Trash. Gmail's `messages.trash` needs only
+ * `gmail.modify` — unlike `messages.delete`, which requires the all-or-nothing
+ * `https://mail.google.com/` scope that this application deliberately does not
+ * request. Trashing is recoverable for 30 days, which is why the reader labels
+ * the action "Delete" while reporting exactly what happened.
+ */
+export async function trashMessage(token, id) {
+  return gmailRequest(`/users/me/messages/${encodeURIComponent(id)}/trash`, {
+    token,
+    method: 'POST',
+    body: {},
+  });
+}
+
 /** Send a pre-built raw MIME message. Returns Gmail's message id. */
 export async function sendMessage(token, raw, { threadId = '' } = {}) {
   const payload = await gmailRequest('/users/me/messages/send', {

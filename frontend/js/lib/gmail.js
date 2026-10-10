@@ -194,7 +194,21 @@ export const gmail = {
 
   message: (id) => call('/message', { query: { id } }),
 
+  /** Marks one message read or unread (a real Gmail UNREAD-label change). */
   setRead: (id, read) => call('/modify', { method: 'POST', body: { id, read } }),
+
+  /**
+   * Removes the message from the Inbox by removing its INBOX label — Gmail's
+   * Archive. It stays in All Mail, exactly as Gmail's own action behaves.
+   */
+  archive: (id) => call('/modify', { method: 'POST', body: { id, action: 'archive' } }),
+
+  /**
+   * Moves the message to Gmail's Trash. Permanent deletion is deliberately not
+   * offered: it needs the `https://mail.google.com/` scope this app never asks
+   * for, so a "delete forever" button could only fail.
+   */
+  trash: (id) => call('/modify', { method: 'POST', body: { id, action: 'trash' } }),
 
   send: (payload) => call('/send', { method: 'POST', body: payload }),
 
