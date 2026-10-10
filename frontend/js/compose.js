@@ -16,7 +16,7 @@ import { gmail, isNotConfigured, isNotConnected, needsReauth } from './lib/gmail
 import { api } from './api.js';
 import { buildEmailDocument } from './lib/email-html.js';
 import {
-  escapeHtml, icon, refreshIcons, toast, confirmDialog,
+  escapeHtml, icon, refreshIcons, toast, confirmDialog, dismiss,
 } from './ui.js';
 import { navigate } from './app.js';
 import { takeComposePrefill, bindConnect, reauthCard, serverSetupCard, connectCard } from './mail-common.js';
@@ -324,9 +324,13 @@ export async function render(container) {
     overlay.querySelector('iframe').srcdoc = document_;
     document.body.appendChild(overlay);
     refreshIcons(overlay);
+    // Shared with openModal/confirmDialog/toast: a transitionend-only removal
+    // leaks this overlay when the preview is closed before its entry animation
+    // has finished, because no transition is created for `opacity` while the
+    // animation still owns it.
     const close = () => {
       overlay.classList.add('modal-closing');
-      overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+      dismiss(overlay);
     };
     overlay.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', close));
     overlay.addEventListener('mousedown', (event) => { if (event.target === overlay) close(); });

@@ -91,6 +91,41 @@ export function debounce(fn, wait = 300) {
   };
 }
 
+// --- Dismissal -------------------------------------------------------------
+//
+// `transitionend` is the preferred signal: it removes the element exactly when
+// the exit transition finishes. It cannot be the only signal. If a dialog is
+// closed while its *entry* animation is still running, the running `opacity`
+// animation owns the property, the class change produces no new value to
+// transition, and the event never fires at all (verified in Chrome: closing
+// mid-animation emits only animation events, closing afterwards emits
+// transitionrun/start/end). The node was then left in the DOM forever, with
+// `.modal-closing`'s `pointer-events: none` hiding the leak. The same applied to
+// a toast clicked during its entry animation, and to `confirmDialog`, whose
+// promise was resolved from that same event and so never settled.
+//
+// A fallback timer makes removal unconditional: whichever signal arrives first
+// wins, so the common path is still driven by the transition (no visual change)
+// and the rare path cannot leak.
+// Exported so any surface that builds its own overlay (the compose preview in
+// compose.js) uses this one dismissal path instead of re-implementing it.
+const EXIT_FALLBACK_MS = 700;
+
+export function dismiss(node, onDone) {
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    node.remove();
+    if (onDone) onDone();
+  };
+  node.addEventListener('transitionend', (event) => {
+    // Bubbles from descendants, so ignore anything that is not this element.
+    if (event.target === node) finish();
+  });
+  setTimeout(finish, EXIT_FALLBACK_MS);
+}
+
 // --- Toasts ----------------------------------------------------------------
 
 function toastHost() {
@@ -115,7 +150,7 @@ export function toast(message, type = 'info', timeout = 4200) {
 
   const remove = () => {
     node.classList.add('toast-out');
-    node.addEventListener('transitionend', () => node.remove(), { once: true });
+    dismiss(node);
   };
   const timer = setTimeout(remove, timeout);
   node.addEventListener('click', () => { clearTimeout(timer); remove(); });
@@ -124,7 +159,7 @@ export function toast(message, type = 'info', timeout = 4200) {
 
 // --- Modals ----------------------------------------------------------------
 
-export function openModal({ title, body, actions = [], size = 'md', onMount }) {
+export function openModal({ title, body, actions = [], size = 'md', onMount, onClose }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const actionHtml = actions.map((action, index) =>
@@ -147,8 +182,8 @@ export function openModal({ title, body, actions = [], size = 'md', onMount }) {
 
   function close() {
     overlay.classList.add('modal-closing');
-    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
     document.removeEventListener('keydown', onKey);
+    dismiss(overlay, onClose);
   }
   function onKey(event) {
     if (event.key === 'Escape') close();
@@ -178,7 +213,7 @@ export function openModal({ title, body, actions = [], size = 'md', onMount }) {
 export function confirmDialog(message, { title = 'Please confirm', confirmLabel = 'Confirm', danger = false } = {}) {
   return new Promise((resolve) => {
     let settled = false;
-    const modal = openModal({
+    openModal({
       title,
       body: `<p class="modal-text">${escapeHtml(message)}</p>`,
       size: 'sm',
@@ -190,9 +225,11 @@ export function confirmDialog(message, { title = 'Please confirm', confirmLabel 
           onClick: () => { settled = true; resolve(true); },
         },
       ],
-    });
-    modal.overlay.addEventListener('transitionend', () => {
-      if (!settled && !document.body.contains(modal.overlay)) { settled = true; resolve(false); }
+      // Resolves on ANY close — action button, Escape, backdrop or the close
+      // icon. Hooked to the dismissal itself rather than to `transitionend`,
+      // which does not fire when the dialog is closed mid entry-animation and
+      // would leave an `await confirmDialog(...)` caller pending forever.
+      onClose: () => { if (!settled) { settled = true; resolve(false); } },
     });
   });
 }

@@ -239,6 +239,15 @@
 .checkbox { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--text-base); }
 .checkbox input { width: 16px; height: 16px; accent-color: var(--accent); }
 
+/* The recipients table puts a bare `<input type="checkbox" class="row-check">`
+   in its first cell instead of wrapping it in `.checkbox`, so it was falling
+   back to the browser default control — the one checkbox in the app that did not
+   match the others. Same treatment, applied to the element itself. */
+.row-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+/* Identifiers: user uuids, Gmail message ids, raw headers. */
+.mono { font-family: var(--font-mono); font-size: 0.94em; }
+
 .switch { position: relative; width: 40px; height: 24px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .switch-track {
@@ -382,10 +391,10 @@ table.data td .row-actions { display: flex; gap: var(--space-1); justify-content
 .sk-block { height: 120px; }
 
 /* --- Toasts ----------------------------------------------------------------
-   The exit is a TRANSITION, not an animation. frontend/js/ui.js removes a toast
-   with `node.addEventListener('transitionend', ...)` after adding `.toast-out`;
-   an animation never fires transitionend, so with animation-only exit styles the
-   element was never removed from the DOM. See the note on .modal-overlay. */
+   The exit is a TRANSITION, not an animation, because frontend/js/ui.js prefers
+   `transitionend` to know when removal is done and an animation never fires it.
+   ui.js also arms a fallback timer, since the transition is not always created —
+   see the note on .modal-overlay. */
 
 .toast-host {
   position: fixed; right: var(--space-5); bottom: var(--space-5);
@@ -420,17 +429,24 @@ table.data td .row-actions { display: flex; gap: var(--space-1); justify-content
 .toast-warning .ui-icon { color: var(--warning); }
 
 /* --- Modals ----------------------------------------------------------------
-   Same contract as the toast, and the same bug fixed the same way: ui.js closes
-   a dialog by adding `.modal-closing` and waiting for `transitionend`. With only
-   an `animation` declared there, `transition-duration` computed to 0s, no
-   CSSTransition was ever created, the event never fired, and the overlay was
-   never removed — leaving a full-viewport, click-capturing layer behind every
-   dialog that had been opened. Measuring the computed style is how that was
-   caught; the fix is to make opacity a *transitioned* property.
+   ui.js closes a dialog by adding `.modal-closing` and removing the overlay once
+   the element is dismissed. The exit is declared here as a TRANSITION, not an
+   animation, because an animation never fires `transitionend`.
+
+   A transition alone is not sufficient, and measuring it is what showed why.
+   When `.modal-overlay` was declared with only an `animation`, the closing class
+   produced no CSSTransition at all, so the event could never fire. Even with the
+   transition restored there is still one path that creates none: closing a
+   dialog *while its entry animation is running*. The running `opacity`
+   animation owns the property, the class change has no new value to animate to,
+   and the only events emitted are animationstart/animationend (verified in
+   Chrome — closing after the entry animation finishes does emit
+   transitionrun/start/end). Relying on the event alone therefore leaked the node
+   on that path. The guarantee now lives in ui.js, which removes the element
+   whichever signal arrives first.
 
    `pointer-events: none` on the closing state is deliberate defence: even if a
-   browser ever fails to deliver the event, the closing overlay cannot swallow
-   clicks. */
+   browser ever fails to dismiss the overlay, it cannot swallow clicks. */
 
 .modal-overlay {
   position: fixed; inset: 0;
