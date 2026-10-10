@@ -30,6 +30,7 @@ export async function render(container) {
   container.innerHTML = `
     <div class="page-head">
       <div>
+        <img class="page-logo" src="/logo-256.png" alt="Seed Code Mail" width="128" height="128" decoding="async">
         <h2>About Seed Code Mail</h2>
         <p>Version ${escapeHtml(String(APP_VERSION))} · a Gmail-connected email workspace and campaign manager.</p>
       </div>

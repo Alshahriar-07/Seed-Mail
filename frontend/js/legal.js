@@ -819,7 +819,7 @@ function topbarHtml(slug, { signedIn }) {
   return `
     <div class="legal-topbar">
       <a class="brand" href="${signedIn ? '#/inbox' : '#/login'}">
-        <span class="brand-mark brand-mark-sm"><i data-lucide="mail" data-size="16"></i></span>
+        <span class="brand-mark brand-mark-sm"><img src="/icon-192.png" alt="" width="32" height="32" decoding="async"></span>
         <span class="brand-text">
           <span class="brand-name">${APP_NAME}</span>
           <span class="brand-sub"> · ${signedIn ? 'Back to the app' : 'Gmail-connected email workspace'}</span>

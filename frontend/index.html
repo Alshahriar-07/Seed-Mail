@@ -30,8 +30,18 @@
   <meta name="twitter:description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <meta name="twitter:image" content="https://mrseedmail.vercel.app/og-image.png">
 
+  <!-- Favicon ----------------------------------------------------------------
+       favicon.svg is the primary (modern browsers); favicon.ico and icon-192.png
+       are the compatibility fallbacks — and the PNG/ICO matter for Google Search,
+       which does not use SVG favicons at all. apple-touch-icon must be a PNG
+       (iOS ignores SVG), which is why it no longer points at favicon.svg. All of
+       these files are copied verbatim or generated from the assets in
+       ./brand assets, and are served unauthenticated from the site root. -->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/manifest.webmanifest">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -79,7 +89,7 @@
   <div class="auth-layout" id="auth-root">
     <main class="auth-shell">
       <header class="auth-brand">
-        <div class="brand-mark brand-mark-lg"><i class="ui-icon" data-lucide="mail" data-size="24"></i></div>
+        <div class="brand-mark brand-mark-lg"><img src="/icon-192.png" alt="" width="52" height="52" decoding="async"></div>
         <h1 class="auth-brand-name">Seed Code Mail</h1>
         <p class="auth-tagline">Secure Email Campaign Management</p>
         <p class="auth-lede">
@@ -141,7 +151,7 @@
     <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
       <div class="sidebar-head">
         <div class="brand">
-          <div class="brand-mark"><i class="ui-icon" data-lucide="mail" data-size="20"></i></div>
+          <div class="brand-mark"><img src="/icon-192.png" alt="" width="38" height="38" decoding="async"></div>
           <div class="brand-text">
             <span class="brand-name">Seed Code Mail</span>
             <span class="brand-sub">Gmail Workspace</span>

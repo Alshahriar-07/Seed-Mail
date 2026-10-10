@@ -1,0 +1,15 @@
+{
+  "name": "Seed Code Mail",
+  "short_name": "Seed Mail",
+  "description": "Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F8F8F6",
+  "theme_color": "#F8F8F6",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

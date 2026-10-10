@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- SEO ---------------------------------------------------------------- -->
-  <title>Seed Code Mail — Secure Email Campaign Management</title>
-  <meta name="description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <title>Seed Code Mail — Gmail-Connected Email Workspace</title>
+  <meta name="description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <link rel="canonical" href="https://mrseedmail.vercel.app/">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#111111">
+  <meta name="theme-color" content="#F8F8F6">
   <meta name="color-scheme" content="light">
   <meta name="author" content="Seed Code Mail">
 
@@ -17,8 +17,8 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Seed Code Mail">
   <meta property="og:url" content="https://mrseedmail.vercel.app/">
-  <meta property="og:title" content="Seed Code Mail — Secure Email Campaign Management">
-  <meta property="og:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta property="og:title" content="Seed Code Mail — Gmail-Connected Email Workspace">
+  <meta property="og:description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <meta property="og:image" content="https://mrseedmail.vercel.app/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -26,17 +26,28 @@
 
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Seed Code Mail — Secure Email Campaign Management">
-  <meta name="twitter:description" content="Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.">
+  <meta name="twitter:title" content="Seed Code Mail — Gmail-Connected Email Workspace">
+  <meta name="twitter:description" content="Read your Gmail inbox, compose and send email from your own account, and run personalised email campaigns with recipients, templates and submission history.">
   <meta name="twitter:image" content="https://mrseedmail.vercel.app/og-image.png">
 
+  <!-- Favicon ----------------------------------------------------------------
+       favicon.svg is the primary (modern browsers); favicon.ico and icon-192.png
+       are the compatibility fallbacks — and the PNG/ICO matter for Google Search,
+       which does not use SVG favicons at all. apple-touch-icon must be a PNG
+       (iOS ignores SVG), which is why it no longer points at favicon.svg. All of
+       these files are copied verbatim or generated from the assets in
+       ./brand assets, and are served unauthenticated from the site root. -->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="/manifest.webmanifest">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+  <!-- Design tokens first: every other stylesheet is written in terms of them. -->
 
   <!-- Structured data: only truthful, verifiable facts about the product.
        No ratings, reviews or organisation claims are invented. -->
@@ -48,12 +59,12 @@
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web",
     "url": "https://mrseedmail.vercel.app/",
-    "description": "Manage personalized email campaigns, recipients, and custom HTML email templates with Seed Code Mail.",
+    "description": "Read your Gmail inbox, compose and send email from your own Gmail account, and run personalised email campaigns with recipients, templates and submission history.",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
   </script>
-  <script type="module" crossorigin src="/assets/index-ChX2v3XJ.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BbfL5Vd7.css">
+  <script type="module" crossorigin src="/assets/index-Cmtc6qZx.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CFe1DjvA.css">
 </head>
 <body>
   <!-- Only meaningful once the application shell is visible (it is the element
@@ -73,13 +84,13 @@
   <div class="auth-layout" id="auth-root">
     <main class="auth-shell">
       <header class="auth-brand">
-        <div class="brand-mark brand-mark-lg"><i data-lucide="mail" data-size="24"></i></div>
+        <div class="brand-mark brand-mark-lg"><img src="/icon-192.png" alt="" width="52" height="52" decoding="async"></div>
         <h1 class="auth-brand-name">Seed Code Mail</h1>
         <p class="auth-tagline">Secure Email Campaign Management</p>
         <p class="auth-lede">
-          Sign in to manage recipients, craft custom HTML email templates and run
-          personalised campaigns with real progress, retry control and a complete
-          submission history.
+          Sign in to read your Gmail inbox, compose and send email from your own
+          account, manage recipients and templates, and run personalised campaigns
+          with real progress and a complete submission history.
         </p>
       </header>
 
@@ -90,11 +101,38 @@
       </section>
 
       <p class="auth-footnote">
-        Signed-in features require an account. Email templates are stored in this
-        browser; when you queue a campaign, that template is saved to your own account
-        row (protected by row level security) so the send worker can deliver it.
+        Signed-in features require an account. Mail is read and sent through Google's
+        official Gmail API from your own account — Seed Code Mail never asks for your
+        Gmail password. Email templates stay in this browser, and a campaign saves a
+        snapshot to your own account row (protected by row level security) so the send
+        worker can deliver it.
       </p>
+
+      <!-- Public footer. Rendered as static HTML so the Privacy Policy and Terms
+           links exist for a visitor (and a crawler) without executing JavaScript.
+           js/legal.js keeps the wording of each link in one place; the hrefs here
+           are the same hash routes the router handles. -->
+      <footer class="site-footer" id="auth-footer" aria-label="Site links">
+        <span class="footer-brand">Seed Code Mail</span>
+        <span class="footer-sep">·</span>
+        <a href="#/privacy" data-legal="privacy">Privacy Policy</a>
+        <span class="footer-sep">·</span>
+        <a href="#/terms" data-legal="terms">Terms of Service</a>
+        <span class="grow"></span>
+        <a href="https://mrseedmail.vercel.app/" rel="noreferrer noopener">mrseedmail.vercel.app</a>
+      </footer>
     </main>
+  </div>
+
+  <!-- Standalone legal layout (`/privacy`, `/terms` — or their hash forms).
+       Revealed by js/app.js whatever the authentication state, so these pages are
+       readable by a signed-out visitor, a reviewer, or a crawler, and after a
+       refresh. Kept in the static markup so the document container exists before
+       any script runs. -->
+  <div class="legal-layout" id="legal-root" hidden>
+    <div id="legal-topbar"></div>
+    <main class="legal-shell" id="legal-body" tabindex="-1"></main>
+    <footer class="site-footer" id="legal-footer" aria-label="Site links"></footer>
   </div>
 
   <noscript>
@@ -108,33 +146,42 @@
     <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
       <div class="sidebar-head">
         <div class="brand">
-          <div class="brand-mark"><i data-lucide="mail" data-size="20"></i></div>
+          <div class="brand-mark"><img src="/icon-192.png" alt="" width="38" height="38" decoding="async"></div>
           <div class="brand-text">
             <span class="brand-name">Seed Code Mail</span>
-            <span class="brand-sub">Acquisition Outreach</span>
+            <span class="brand-sub">Gmail Workspace</span>
           </div>
         </div>
         <div class="sidebar-controls">
           <button class="icon-btn sidebar-toggle" id="sidebar-toggle" type="button"
             aria-controls="sidebar" aria-expanded="true"
             aria-label="Collapse sidebar" title="Collapse sidebar">
-            <i data-lucide="panel-left-close" data-size="18"></i>
+            <i class="ui-icon" data-lucide="panel-left-close" data-size="18"></i>
           </button>
           <button class="icon-btn sidebar-close" id="nav-close" type="button"
             aria-label="Close navigation" title="Close navigation">
-            <i data-lucide="x" data-size="18"></i>
+            <i class="ui-icon" data-lucide="x" data-size="18"></i>
           </button>
         </div>
       </div>
 
       <nav class="nav" id="nav">
-        <a class="nav-item" href="#/dashboard" data-route="dashboard"><i data-lucide="layout-dashboard" data-size="18"></i><span>Dashboard</span></a>
-        <a class="nav-item" href="#/recipients" data-route="recipients"><i data-lucide="users" data-size="18"></i><span>Recipients</span></a>
-        <a class="nav-item" href="#/campaigns" data-route="campaigns"><i data-lucide="send" data-size="18"></i><span>Campaigns</span></a>
-        <a class="nav-item" href="#/templates" data-route="templates"><i data-lucide="layout-template" data-size="18"></i><span>Email Templates</span></a>
-        <a class="nav-item" href="#/editor" data-route="editor"><i data-lucide="code" data-size="18"></i><span>Email Editor</span></a>
-        <a class="nav-item" href="#/history" data-route="history"><i data-lucide="history" data-size="18"></i><span>Email History</span></a>
-        <a class="nav-item" href="#/settings" data-route="settings"><i data-lucide="settings" data-size="18"></i><span>Settings</span></a>
+        <a class="nav-item" href="#/inbox" data-route="inbox"><i class="ui-icon" data-lucide="inbox" data-size="18"></i><span>Inbox</span></a>
+        <a class="nav-item" href="#/compose" data-route="compose"><i class="ui-icon" data-lucide="pen-square" data-size="18"></i><span>Compose Email</span></a>
+        <a class="nav-item" href="#/sent" data-route="sent"><i class="ui-icon" data-lucide="send" data-size="18"></i><span>Sent</span></a>
+
+        <div class="nav-divider" role="presentation"><span>Campaigns</span></div>
+        <a class="nav-item" href="#/dashboard" data-route="dashboard"><i class="ui-icon" data-lucide="layout-dashboard" data-size="18"></i><span>Dashboard</span></a>
+        <a class="nav-item" href="#/recipients" data-route="recipients"><i class="ui-icon" data-lucide="users" data-size="18"></i><span>Recipients</span></a>
+        <a class="nav-item" href="#/campaigns" data-route="campaigns"><i class="ui-icon" data-lucide="megaphone" data-size="18"></i><span>Campaigns</span></a>
+        <a class="nav-item" href="#/templates" data-route="templates"><i class="ui-icon" data-lucide="layout-template" data-size="18"></i><span>Email Templates</span></a>
+        <a class="nav-item" href="#/editor" data-route="editor"><i class="ui-icon" data-lucide="code" data-size="18"></i><span>Email Editor</span></a>
+        <a class="nav-item" href="#/history" data-route="history"><i class="ui-icon" data-lucide="history" data-size="18"></i><span>Email History</span></a>
+
+        <div class="nav-divider" role="presentation"><span>Account</span></div>
+        <a class="nav-item" href="#/profile" data-route="profile"><i class="ui-icon" data-lucide="user-round" data-size="18"></i><span>Profile</span></a>
+        <a class="nav-item" href="#/settings" data-route="settings"><i class="ui-icon" data-lucide="settings" data-size="18"></i><span>Settings</span></a>
+        <a class="nav-item" href="#/about" data-route="about"><i class="ui-icon" data-lucide="info" data-size="18"></i><span>About</span></a>
       </nav>
 
       <div class="sidebar-footer">
@@ -148,7 +195,7 @@
     <div class="main" id="main-content" tabindex="-1">
       <header class="topbar">
         <button class="icon-btn menu-toggle" id="menu-toggle" type="button"
-          aria-controls="sidebar" aria-expanded="false" aria-label="Open navigation"><i data-lucide="menu" data-size="20"></i></button>
+          aria-controls="sidebar" aria-expanded="false" aria-label="Open navigation"><i class="ui-icon" data-lucide="menu" data-size="20"></i></button>
         <div class="topbar-title">
           <h1 id="section-title">Dashboard</h1>
         </div>
@@ -156,7 +203,7 @@
           <button class="smtp-indicator" id="smtp-indicator" title="Send worker and SMTP status">
             <span class="status-led"></span><span class="smtp-label">Worker</span>
           </button>
-          <button class="icon-btn" id="settings-shortcut" aria-label="Open settings" title="Settings"><i data-lucide="settings-2" data-size="18"></i></button>
+          <button class="icon-btn" id="settings-shortcut" aria-label="Open settings" title="Settings"><i class="ui-icon" data-lucide="settings-2" data-size="18"></i></button>
           <div class="profile-chip" id="profile-chip" title="Signed-in account">
             <span class="avatar" id="profile-avatar">?</span>
             <span class="profile-meta">
@@ -164,7 +211,7 @@
               <span class="profile-email" id="profile-email">—</span>
             </span>
           </div>
-          <button class="icon-btn" id="signout" aria-label="Sign out" title="Sign out"><i data-lucide="log-out" data-size="18"></i></button>
+          <button class="icon-btn" id="signout" aria-label="Sign out" title="Sign out"><i class="ui-icon" data-lucide="log-out" data-size="18"></i></button>
         </div>
       </header>
 
@@ -172,6 +219,16 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- Icon library.
+
+       Pinned to an exact version on purpose: `@latest` is a floating major
+       version, and when it moved from v0 to v1 the library began REPLACING the
+       `<i data-lucide>` host element with an `<svg>` instead of nesting the svg
+       inside it. That silently invalidated `i > svg` lookups and every CSS rule
+       written against the host element, so icons lost their intended size and
+       inline positioning without a single error being raised. Any upgrade here
+       must be accompanied by a look at frontend/js/ui.js (icon host handling)
+       and frontend/css (`.ui-icon` selectors). -->
+  <script src="https://unpkg.com/lucide@1.54.0/dist/umd/lucide.min.js"></script>
 </body>
 </html>

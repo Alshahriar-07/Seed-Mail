@@ -1175,7 +1175,8 @@ hide a genuine mismatch rather than fix it.
 │   │   ├── agent-panel.js       # Local Agent status card + setup instructions (§10a)
 │   │   └── lib/                 # endpoints, supabase, gmail, email-html, worker, agent,
 │   │                            #   shortcuts, render, stores
-│   └── public/                  # robots.txt, sitemap.xml, favicon.svg, og-image.png
+│   └── public/                  # robots.txt, sitemap.xml, favicon.svg/.ico, brand icons,
+│                                #   og-image.png, manifest.webmanifest (from ./brand assets)
 ├── api/gmail/                   # Vercel Node functions: the Gmail backend
 │   ├── status.js  connect.js  callback.js  disconnect.js
 │   ├── inbox.js  sent.js  message.js  modify.js  send.js  attachment.js

@@ -11,8 +11,11 @@
 # visitor, a reviewer and a crawler, and they are where the footer links point.
 #
 # Nothing needs to be disallowed here: every real path (/robots.txt,
-# /sitemap.xml, /css/*, /js/*, /assets/*, /favicon.svg, /og-image.png) is
-# public and safe to fetch.
+# /sitemap.xml, /css/*, /js/*, /assets/*, /favicon.svg, /favicon.ico,
+# /icon-192.png, /icon-512.png, /apple-touch-icon.png, /logo-256.png,
+# /og-image.png, /manifest.webmanifest) is public and safe to fetch. The favicon
+# files in particular MUST stay crawlable: Googlebot-Image has to be able to
+# fetch them for the site icon to appear in Google Search results.
 
 User-agent: *
 Allow: /

@@ -607,7 +607,8 @@ _BUILD_READY = (_DIST_DIR / "index.html").exists()
 
 if _BUILD_READY:
     # A single mount serves index.html, the bundled assets, and the public files
-    # (robots.txt, sitemap.xml, favicon.svg, og-image.png).
+    # (robots.txt, sitemap.xml, the favicon/brand icons, og-image.png,
+    # manifest.webmanifest).
     app.mount("/", StaticFiles(directory=_DIST_DIR, html=True), name="frontend")
 else:
     @app.get("/")
