@@ -3,6 +3,7 @@
 import { api } from './api.js';
 import { escapeHtml, icon, refreshIcons, toast, spinner, confirmDialog } from './ui.js';
 import { refreshTopbar } from './app.js';
+import { agentCardMarkup, bindAgentCard } from './agent-panel.js';
 
 let host = null;
 let snapshot = null;
@@ -142,6 +143,7 @@ export async function render(container) {
     <div class="notice" style="margin-bottom:20px;">${icon('shield', 16)}
       <span>The App Password is never sent back to the browser, never stored in Supabase, and never saved in localStorage or IndexedDB. It is written to the send worker's own environment on your machine.</span></div>
     <div id="worker-notice" style="margin-bottom:20px;"></div>
+    <div id="local-agent" style="margin-bottom:20px;"></div>
     <div id="settings-form"></div>
     <div id="smtp-result" style="margin-top:20px;"></div>
 
@@ -161,6 +163,14 @@ export async function render(container) {
   const body = container.querySelector('#settings-form');
   body.innerHTML = spinner('Loading settings');
   refreshIcons(body);
+
+  // The Local Agent card is independent of the settings row: it reports whether
+  // a sender is running on this computer, which is a different question from
+  // what the stored preferences are.
+  const agentHost = container.querySelector('#local-agent');
+  agentHost.innerHTML = agentCardMarkup();
+  refreshIcons(agentHost);
+  bindAgentCard(agentHost);
 
   await load();
 

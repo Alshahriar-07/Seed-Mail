@@ -19,8 +19,15 @@ npm-debug.log*
 
 # Virtual environments
 .venv/
+.venv-agent/
 venv/
 env/
+
+# Local Agent build output (build-agent.bat). The packaged agent is a build
+# artifact, not source: reproduce it with build-agent.bat rather than committing
+# a binary.
+SeedMailAgent/
+build/agent/
 
 # Python
 __pycache__/

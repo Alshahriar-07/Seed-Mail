@@ -30,6 +30,7 @@ import {
   confirmDialog,
 } from './ui.js';
 import { avatarMarkup, refreshAvatars } from './lib/avatar.js';
+import { listAction, readerAction } from './lib/shortcuts.js';
 import { navigate } from './app.js';
 
 const PAGE_SIZE = 25;
@@ -472,7 +473,63 @@ export async function renderMailbox(container, {
     navigate(mailbox, [button.dataset.open]);
   });
 
+  // --- keyboard shortcuts ----------------------------------------------------
+  //
+  // `j`/`k` move a cursor through the rows and Enter (or `o`) opens the one it is
+  // on, so a mailbox can be read without reaching for the mouse. The cursor is a
+  // class on the row rather than a separate element, so it survives "Load more"
+  // and never becomes a second source of truth about what is selected.
+  let cursor = -1;
+  const rows = () => [...listEl.querySelectorAll('li.mail-row')];
+
+  const moveCursor = (delta) => {
+    const items = rows();
+    if (!items.length) return;
+    cursor = Math.max(0, Math.min(items.length - 1, cursor + delta));
+    items.forEach((row, index) => row.classList.toggle('is-cursor', index === cursor));
+    items[cursor].scrollIntoView({ block: 'nearest' });
+  };
+
+  const onKeydown = (event) => {
+    const action = listAction(event);
+    if (!action) return;
+    if (action === 'next' || action === 'previous') {
+      event.preventDefault();
+      moveCursor(action === 'next' ? 1 : -1);
+      return;
+    }
+    if (action === 'search') {
+      event.preventDefault();
+      bodyEl.querySelector('#mail-search')?.focus();
+      return;
+    }
+    if (action === 'compose') {
+      event.preventDefault();
+      navigate('compose');
+      return;
+    }
+    if (action === 'refresh') {
+      event.preventDefault();
+      pageToken = '';
+      fetchPage({});
+      return;
+    }
+    if (action === 'open') {
+      const items = rows();
+      const button = (items[cursor] || items[0])?.querySelector('[data-open]');
+      if (button) {
+        event.preventDefault();
+        button.click();
+      }
+    }
+  };
+  document.addEventListener('keydown', onKeydown);
+
   await fetchPage({});
+
+  // Returned to the router, which calls it before rendering the next route — so
+  // the shortcut never stays live on another page.
+  return () => document.removeEventListener('keydown', onKeydown);
 }
 
 // --- reading view -----------------------------------------------------------
@@ -618,7 +675,14 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
 
   const shell = container.querySelector('#reader-shell');
   const statusEl = container.querySelector('#reader-status');
-  const cleanup = () => container.classList.remove('view-reader');
+  // The keyboard listener is registered once the message and its buttons exist,
+  // so this starts as a no-op and the router's cleanup still works on every
+  // early-return path below.
+  let removeShortcuts = () => {};
+  const cleanup = () => {
+    removeShortcuts();
+    container.classList.remove('view-reader');
+  };
 
   let status;
   try {
@@ -858,6 +922,39 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
     });
     navigate('compose');
   });
+
+  // --- keyboard shortcuts ----------------------------------------------------
+  //
+  // Registered on the document so the reading view does not have to be focused
+  // first. The mapping itself is a pure function (lib/shortcuts.js): it ignores
+  // anything typed into a field and anything with a modifier, so Ctrl+R still
+  // reloads and typing "e" in a box still types "e".
+  const openers = {
+    back: '#reader-back',
+    reply: '#reader-reply',
+    forward: '#reader-forward',
+    archive: '#reader-archive',
+    delete: '#reader-delete',
+    'toggle-read': '#reader-read-toggle',
+  };
+  const onKeydown = (event) => {
+    const action = readerAction(event);
+    if (!action) return;
+    // No neighbouring message is loaded in this view, so moving newer/older means
+    // going back to the list rather than guessing which message comes next.
+    if (action === 'newer' || action === 'older') {
+      event.preventDefault();
+      navigate(mailbox);
+      return;
+    }
+    const button = container.querySelector(openers[action]);
+    if (button && !button.disabled) {
+      event.preventDefault();
+      button.click();
+    }
+  };
+  document.addEventListener('keydown', onKeydown);
+  removeShortcuts = () => document.removeEventListener('keydown', onKeydown);
 
   shell.querySelectorAll('[data-attachment]').forEach((button) => {
     button.addEventListener('click', async () => {

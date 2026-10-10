@@ -1,44 +1,60 @@
-/* Seed Code Mail — signed-out landing + authentication screens */
+/* Seed Code Mail — signed-out landing + authentication screens
+   ---------------------------------------------------------------------------
+   This is the first screen anyone sees, and for a signed-out visitor it is also
+   the marketing page: brand lockup, one sentence of explanation, one card.
+
+   The composition is deliberately a single centred column. A second panel beside
+   the form would be the generic login-template shape, and it would either be
+   empty or invent product screenshots that do not exist.
+
+   The background is one very low-contrast top-light radial plus a hairline grid.
+   Both are static, both are tiny, and neither competes with the form — which is
+   the difference between depth and decoration. */
 
 .skip-link {
   position: absolute;
   left: -9999px;
   top: 0;
-  z-index: 100;
-  padding: 10px 16px;
-  background: var(--black);
-  color: var(--white);
+  z-index: var(--z-skip);
+  padding: var(--space-3) var(--space-4);
+  background: var(--n-950);
+  color: var(--text-inverse);
   border-radius: 0 0 var(--radius-sm) 0;
   text-decoration: none;
+  font-weight: 600;
 }
-.skip-link:focus { left: 0; }
+.skip-link:focus { left: 0; outline: var(--ring-focus); outline-offset: var(--ring-offset); }
 
 .noscript-notice {
-  margin: 24px auto;
+  margin: var(--space-6) auto;
   max-width: 720px;
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   background: var(--warning-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--black);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-lg);
+  color: #78350F;
 }
 
-/* One centered column. The signed-out view *is* the authentication page: no
-   second panel, and never any application content beside the form. */
+/* --- layout ---------------------------------------------------------------- */
+
 .auth-layout {
   display: grid;
   place-items: center;
   min-height: 100vh;
-  padding: 40px 20px;
-  background: var(--white);
+  min-height: 100dvh;
+  padding: var(--space-10) var(--space-5);
+  background-color: var(--surface);
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(15, 118, 110, 0.07) 0%, rgba(15, 118, 110, 0) 60%),
+    linear-gradient(to bottom, var(--n-25) 0%, var(--surface) 42%);
 }
 
 .auth-shell {
   width: 100%;
-  max-width: 420px;
+  max-width: 432px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: var(--space-6);
 }
 
 .auth-brand {
@@ -46,59 +62,84 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 6px;
+  gap: var(--space-3);
 }
 
-.brand-mark-lg { width: 48px; height: 48px; border-radius: 14px; }
+.brand-mark-lg {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-4), var(--elev-hairline);
+}
 
-.auth-brand-name { font-size: 22px; letter-spacing: -0.02em; }
+.auth-brand-name {
+  font-size: var(--text-3xl);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
 
 .auth-tagline {
   margin: 0;
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
 }
 
 .auth-lede {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 13.5px;
-  max-width: 46ch;
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+  max-width: 42ch;
 }
 
-.auth-footnote { color: var(--muted-2); font-size: 12px; text-align: center; margin: 0; }
+.auth-footnote { color: var(--text-subtle); font-size: var(--text-sm); text-align: center; margin: 0; }
 
 .auth-panel { display: flex; justify-content: center; }
 
 .auth-card {
+  position: relative;
   width: 100%;
   max-width: 400px;
-  background: var(--white);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  padding: 28px 26px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elev-4);
+  padding: var(--space-6);
+}
+/* A hairline of the accent across the top edge ties the card to the brand
+   without tinting the whole surface. */
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 15%;
+  right: 15%;
+  height: 2px;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.5;
 }
 
-.auth-card-head { margin-bottom: 20px; }
-.auth-card-head h2 { font-size: 20px; margin-bottom: 6px; }
-.auth-card-head p { color: var(--muted); font-size: 13px; margin: 0; }
+.auth-card-head { margin-bottom: var(--space-5); }
+.auth-card-head h2 { font-size: var(--text-2xl); letter-spacing: -0.02em; margin-bottom: 6px; }
+.auth-card-head p { color: var(--text-muted); font-size: var(--text-base); margin: 0; }
 
-.auth-card .field { margin-bottom: 14px; }
-.auth-card .btn-block { width: 100%; justify-content: center; margin-top: 4px; }
+.auth-card .field { margin-bottom: var(--space-4); }
+.auth-card .btn-block { justify-content: center; margin-top: var(--space-1); }
 
 .auth-links {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 18px;
-  font-size: 12.5px;
-  color: var(--muted);
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
-.auth-links a { color: var(--black); text-decoration: underline; }
+.auth-links a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.auth-links a:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* Sign in / Create account / Forgot password are always reachable from the
    authentication page, with the current screen marked. */
@@ -106,24 +147,24 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px 16px;
-  margin-top: 18px;
-  font-size: 12.5px;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
 }
-.auth-nav a { color: var(--muted); text-decoration: underline; }
-.auth-nav a[aria-current="page"] { color: var(--black); font-weight: 600; text-decoration: none; }
+.auth-nav a { color: var(--text-muted); text-decoration: none; }
+.auth-nav a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.auth-nav a[aria-current="page"] { color: var(--text); font-weight: 600; }
 
-.auth-nav a:focus-visible,
-.auth-links a:focus-visible,
-.auth-card a:focus-visible { outline: 2px solid var(--black); outline-offset: 2px; border-radius: 4px; }
-
-.auth-card .notice { margin-bottom: 16px; font-size: 12.5px; }
+.auth-card .notice { margin-bottom: var(--space-4); font-size: var(--text-sm); }
 
 @media (max-width: 520px) {
-  .auth-layout { padding: 28px 16px; }
-  .auth-shell { gap: 18px; }
-  .auth-card { padding: 22px 18px; }
-  .auth-brand-name { font-size: 20px; }
+  .auth-layout { padding: var(--space-8) var(--space-4); }
+  .auth-shell { gap: var(--space-5); }
+  .auth-card { padding: var(--space-5); border-radius: var(--radius-lg); }
+  .auth-brand-name { font-size: var(--text-2xl); }
+  .brand-mark-lg { width: 46px; height: 46px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -82,6 +82,9 @@ class RunState:
         self.status = RUNNING
         self.current_recipient: dict[str, Any] | None = None
         self.error = ""
+        # When this run reached a terminal state. Set in `_run`'s finally block;
+        # empty while the run is still going or paused for later resumption.
+        self.finished_at = ""
         self.lock = threading.RLock()
 
     def snapshot(self) -> dict[str, Any]:
@@ -134,6 +137,32 @@ class CampaignManager:
                 if state.status == RUNNING:
                     return state.snapshot()
         return None
+
+    def last_finished(self) -> dict[str, Any] | None:
+        """The most recently finished run in this process, or None.
+
+        "Finished" means terminal: completed or cancelled. A paused run is not
+        included — it is still live and will resume.
+
+        This exists so a status response can say how the last send ended. It is a
+        record of what this process actually did, not a derived guess, and it is
+        kept only in memory: a restarted worker legitimately reports "nothing has
+        run here yet" rather than repeating a stale outcome.
+        """
+        with self._lock:
+            finished = [
+                state for state in self._runs.values()
+                if state.status in (COMPLETED, CANCELLED) and state.finished_at
+            ]
+        if not finished:
+            return None
+        latest = max(finished, key=lambda state: state.finished_at)
+        snapshot = latest.snapshot()
+        snapshot["finished_at"] = latest.finished_at
+        # "completed" only ever means the run drained its queue; individual
+        # recipients may still have failed, and the counters below say how many.
+        snapshot["ok"] = latest.status == COMPLETED and snapshot["counters"].get("failed", 0) == 0
+        return snapshot
 
     def is_active(self, campaign_id: str) -> bool:
         """True while this process still has a live run thread for the campaign.
@@ -329,6 +358,12 @@ class CampaignManager:
                 else:
                     state.status = PAUSED
                 final_status = state.status
+                # Recorded once, here, because this is the single point where a
+                # run reaches its terminal state — including the exception path,
+                # which is why the timestamp lives in `finally` rather than after
+                # the loop.
+                if final_status in (COMPLETED, CANCELLED):
+                    state.finished_at = _now()
             self._patch_campaign(
                 access_token,
                 state,

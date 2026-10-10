@@ -14,6 +14,7 @@
     "test": "node --test \"tests/js/*.test.mjs\"",
     "test:rls": "node supabase/tests/rls_isolation.mjs",
     "check:api": "node tools/check-api.mjs",
+    "check:tokens": "node tools/check-tokens.mjs",
     "check:syntax": "node tools/check-syntax.mjs"
   },
   "dependencies": {

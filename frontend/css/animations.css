@@ -1,128 +1,155 @@
-/* Seed Code Mail - animations & transitions
-   Subtle, short, professional. Nothing animates large areas continuously, and
-   everything is disabled when the user prefers reduced motion. */
+/* Seed Code Mail — motion
+   ===========================================================================
+   One place defines how the product moves. The rules it follows:
+
+   * **Only two properties are animated for movement: `opacity` and
+     `transform`.** Both are composited, so a hover, a list entrance or a drawer
+     never triggers layout or paint on the main thread. Colour, border and
+     shadow transitions are allowed because they are cheap and bounded.
+   * **Durations come from tokens.css** (`--dur-1` … `--dur-5`). Nothing here
+     invents a duration, which is what stops a page from feeling like it was
+     built in three sittings.
+   * **Entrances only.** A route change animates in; it never animates out. An
+     exit animation forces the user to wait for decoration before the next screen
+     appears, which is the single most common way motion makes a product feel
+     slow.
+   * **Stagger is capped.** Lists stagger the first few rows and stop, so a
+     300-row table is not still assembling itself a second later.
+   * **Reduced motion is honoured globally and last**, so it wins over every rule
+     above.
+
+   Two exits are deliberately NOT here — `.toast-out` and
+   `.modal-overlay.modal-closing` live in components.css as transitions. They
+   must remain transitions: frontend/js/ui.js removes those elements on
+   `transitionend`, and an `animation` never fires that event.
+   =========================================================================== */
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @keyframes shimmer {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
 }
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
 @keyframes modal-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(16px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes toast-out {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(16px); }
+  from { opacity: 0; transform: translateX(20px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 @keyframes view-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes panel-in {
   from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes led-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px var(--success-bg); }
-  50% { box-shadow: 0 0 0 5px var(--success-bg); }
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* --- Page & list entrances -------------------------------------------------- */
+/* --- Route changes ---------------------------------------------------------
+   app.js re-adds `.view-enter` on every render. One short, composited rise is
+   enough to signal "this is new content" without delaying anything: there is no
+   exit phase, so the next page is interactive immediately. */
 
-.view-enter { animation: view-in 0.28s var(--ease); }
+.view-enter { animation: view-in var(--dur-5) var(--ease-emphasized); }
 
-.card-list > * { animation: view-in 0.32s var(--ease) both; }
-.card-list > *:nth-child(2) { animation-delay: 0.04s; }
-.card-list > *:nth-child(3) { animation-delay: 0.08s; }
-.card-list > *:nth-child(4) { animation-delay: 0.12s; }
+/* --- Staggered entrances ---------------------------------------------------
+   `backwards` fill so a row is invisible until its own delay starts, rather than
+   flashing at full opacity and then animating. */
 
-table.data tbody tr { animation: fade-in 0.22s var(--ease) both; }
-table.data tbody tr:nth-child(2) { animation-delay: 0.03s; }
-table.data tbody tr:nth-child(3) { animation-delay: 0.06s; }
-table.data tbody tr:nth-child(4) { animation-delay: 0.09s; }
-table.data tbody tr:nth-child(5) { animation-delay: 0.12s; }
+.card-list > * { animation: row-in var(--dur-4) var(--ease-emphasized) backwards; }
+.card-list > *:nth-child(2) { animation-delay: 40ms; }
+.card-list > *:nth-child(3) { animation-delay: 80ms; }
+.card-list > *:nth-child(4) { animation-delay: 120ms; }
 
-.activity-item, .list-select .row { animation: fade-in 0.22s var(--ease) both; }
+/* Tables reuse `.card-list`-style stagger but only for the first rows: past the
+   fold the rows are off-screen and staggering them just costs frames. */
+table.data tbody tr { animation: fade-in var(--dur-3) var(--ease-standard) backwards; }
+table.data tbody tr:nth-child(2) { animation-delay: 25ms; }
+table.data tbody tr:nth-child(3) { animation-delay: 50ms; }
+table.data tbody tr:nth-child(4) { animation-delay: 75ms; }
+table.data tbody tr:nth-child(5) { animation-delay: 100ms; }
 
-/* --- Navigation ------------------------------------------------------------- */
+.activity-item, .list-select .row { animation: fade-in var(--dur-3) var(--ease-standard) backwards; }
+.activity-item:nth-child(2), .list-select .row:nth-child(2) { animation-delay: 30ms; }
+.activity-item:nth-child(3), .list-select .row:nth-child(3) { animation-delay: 60ms; }
 
-.nav-item { transition: background 0.18s var(--ease), color 0.18s var(--ease), transform 0.18s var(--ease); }
-.nav-item.active { transform: translateX(2px); }
-.nav-item.active::before { transition: height 0.2s var(--ease), opacity 0.2s var(--ease); }
+/* Mailbox rows: the same idea, capped harder because a page holds 25 of them. */
+.mail-row { animation: fade-in var(--dur-2) var(--ease-standard) backwards; }
+.mail-row:nth-child(2) { animation-delay: 16ms; }
+.mail-row:nth-child(3) { animation-delay: 32ms; }
+.mail-row:nth-child(4) { animation-delay: 48ms; }
+.mail-row:nth-child(5) { animation-delay: 64ms; }
+.mail-row:nth-child(6) { animation-delay: 80ms; }
+.mail-row:nth-child(n+7) { animation-delay: 96ms; }
 
-/* Width (desktop collapse) and transform (mobile drawer) are both driven from
-   here so the two presentations cannot fight over the same property. */
-.sidebar { transition: width 0.24s var(--ease), transform 0.28s var(--ease), box-shadow 0.28s var(--ease); }
-/* The mobile drawer adds its own `visibility` timing (style.css): immediate on
-   open so focus can enter the drawer, delayed on close so it can slide out. */
-.sidebar-scrim { transition: opacity 0.24s var(--ease); }
+/* --- Navigation -----------------------------------------------------------
+   The rail animates its width (desktop collapse) and its transform (mobile
+   drawer) from here, so the two presentations cannot fight over a property. */
 
-/* --- Buttons ---------------------------------------------------------------- */
+.sidebar { transition: width var(--dur-4) var(--ease-emphasized), transform var(--dur-4) var(--ease-emphasized), box-shadow var(--dur-4) var(--ease-standard); }
+.sidebar-scrim { transition: opacity var(--dur-3) var(--ease-standard); }
 
-.btn:active:not(:disabled) { transform: scale(0.975); }
-.icon-btn:active:not(:disabled) { transform: scale(0.94); }
-.btn .spinner { width: 14px; height: 14px; border-width: 2px; border-color: rgba(255,255,255,0.35); border-top-color: currentColor; }
-.btn-secondary .spinner, .btn-ghost .spinner { border-color: var(--border); border-top-color: var(--black); }
-.btn:disabled { transition: opacity 0.18s var(--ease); }
+.nav-item { transition: background-color var(--dur-2) var(--ease-standard), color var(--dur-2) var(--ease-standard); }
+/* Only the icon nudges — a whole pill sliding on every hover is noise. */
+.nav-item .ui-icon { transition: transform var(--dur-2) var(--ease-emphasized); }
+.nav-item:hover .ui-icon { transform: scale(1.06); }
+.nav-item.active .ui-icon { transform: none; }
 
-/* --- Cards, badges, progress ------------------------------------------------ */
+/* --- Micro-interactions ---------------------------------------------------- */
 
-.card { transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), border-color 0.2s var(--ease); }
-.quick-action { transition: box-shadow 0.18s var(--ease), transform 0.18s var(--ease), border-color 0.18s var(--ease); }
+.btn:disabled { transition: opacity var(--dur-3) var(--ease-standard); }
+.btn .spinner { width: 14px; height: 14px; border-width: 2px; border-color: rgba(255, 255, 255, 0.35); border-top-color: currentColor; }
+.btn-secondary .spinner, .btn-ghost .spinner { border-color: var(--border-strong); border-top-color: var(--n-950); }
 
-.badge { transition: background-color 0.24s var(--ease), color 0.24s var(--ease), border-color 0.24s var(--ease); }
-.badge-dot { transition: transform 0.24s var(--ease); }
+.card, .quick-action { will-change: auto; }
+.badge { transition: background-color var(--dur-3) var(--ease-standard), color var(--dur-3) var(--ease-standard), border-color var(--dur-3) var(--ease-standard); }
 
-.progress-bar { transition: width 0.6s var(--ease); }
+.tab { transition: background-color var(--dur-2) var(--ease-standard), color var(--dur-2) var(--ease-standard), box-shadow var(--dur-2) var(--ease-standard); }
+.variable-panel-body { animation: panel-in var(--dur-3) var(--ease-emphasized); }
+.variable-panel[open] .variable-chevron,
+.variable-panel-head[aria-expanded="true"] .variable-chevron { transform: rotate(180deg); }
 
-.activity-item, .list-select .row, table.data tbody tr { transition: background-color 0.16s var(--ease); }
+/* Collapsible sections (the reader's plain-text panel, disclosure panels). */
+details > summary { transition: color var(--dur-2) var(--ease-standard); }
+details[open] > *:not(summary) { animation: panel-in var(--dur-3) var(--ease-emphasized); }
 
-/* --- Tabs, panels, preview -------------------------------------------------- */
+/* --- Feedback --------------------------------------------------------------
+   Entrances only; the exits are the transitions in components.css. */
 
-.tab { transition: background 0.18s var(--ease), color 0.18s var(--ease), box-shadow 0.18s var(--ease); }
-.variable-panel-body { animation: panel-in 0.22s var(--ease); }
+.modal-overlay { animation: fade-in var(--dur-3) var(--ease-standard); }
+.modal { animation: modal-in var(--dur-4) var(--ease-emphasized); }
+.toast { animation: toast-in var(--dur-4) var(--ease-emphasized); }
+.notice { animation: fade-in var(--dur-3) var(--ease-standard); }
 
-/* Only the scaled viewport animates. The canvas box snaps straight to its final
-   size so the preview can never overflow the layout while resizing. */
-.preview-viewport { transition: transform 0.22s var(--ease); }
-.preview-loading { animation: fade-in 0.18s var(--ease); }
-.preview-loading .spinner { animation: spin 0.7s linear infinite; }
-
-/* --- Modals / toasts / notices ---------------------------------------------- */
-
-.modal-overlay { animation: fade-in 0.2s var(--ease); }
-.modal-overlay.modal-closing { animation: fade-out 0.18s var(--ease) forwards; }
-.modal { animation: modal-in 0.24s var(--ease); }
-.toast { animation: toast-in 0.28s var(--ease); }
-.toast-out { animation: toast-out 0.24s var(--ease) forwards; }
-.notice { animation: fade-in 0.2s var(--ease); }
-
-/* --- Accessibility ---------------------------------------------------------- */
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-.nav-item:focus-visible,
-.icon-btn:focus-visible {
-  outline: 2px solid var(--black);
-  outline-offset: 2px;
+/* A newly revealed notice pulls the eye for a moment, then settles. It is a
+   one-shot shadow pulse, not a loop, so it cannot become a distraction. */
+@keyframes notice-attention {
+  0%   { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.24); }
+  100% { box-shadow: 0 0 0 8px rgba(15, 118, 110, 0); }
 }
+.notice-success { animation: fade-in var(--dur-3) var(--ease-standard), notice-attention var(--dur-5) var(--ease-standard); }
+
+.preview-viewport { transition: transform var(--dur-3) var(--ease-emphasized); }
+.preview-loading { animation: fade-in var(--dur-2) var(--ease-standard); }
+
+/* --- Reduced motion --------------------------------------------------------
+   Applied last so it overrides everything above. Durations are clamped rather
+   than set to 0 on purpose: a transition with a ~0 duration still fires
+   `transitionend`, which is what removes modals and toasts from the DOM. Setting
+   them to `none` would re-break that. */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -135,11 +162,18 @@ textarea:focus-visible,
   .card-list > *,
   .variable-panel-body,
   .modal,
+  .modal-overlay,
   .toast,
   .notice,
-  table.data tbody tr { animation: none; }
-  .nav-item.active { transform: none; }
-  .preview-viewport { transition: none; }
-  .app-shell,
-  .sidebar { transition: none; }
+  .notice-success,
+  .mail-row,
+  table.data tbody tr,
+  .activity-item,
+  .list-select .row,
+  details[open] > *:not(summary) { animation: none; }
+
+  .nav-item:hover .ui-icon { transform: none; }
+  .card.hoverable:hover,
+  .quick-action:hover { transform: none; }
+  .app-shell, .sidebar { transition: none; }
 }

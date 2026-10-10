@@ -229,6 +229,40 @@ def queue_configured() -> bool:
     return bool(supabase_url() and service_role_key())
 
 
+# --- Local agent ------------------------------------------------------------
+#
+# These describe the *shape* of this process as a user-operated local agent: how
+# it is bound, and whether a request must carry a pairing token. They are read
+# here (rather than inline in worker/main.py) so the request guard, the startup
+# banner and the health probe all agree on one answer.
+
+def bind_host() -> str:
+    """The interface the worker binds to. Defaults to loopback."""
+    return _clean(os.getenv("WORKER_HOST")) or "127.0.0.1"
+
+
+def loopback_bind() -> bool:
+    """True when this process is reachable only from this machine.
+
+    A loopback bind is what makes the Host-header rule in ``worker/security.py``
+    applicable: the agent can only be reached by a name that resolves to this
+    machine, so a request that arrives under any other name got there through
+    DNS rebinding.
+    """
+    host = bind_host().lower()
+    return host in {"127.0.0.1", "localhost", "::1", "[::1]"} or host.startswith("127.")
+
+
+def agent_token() -> str:
+    """The optional pairing secret, or '' when pairing is disabled.
+
+    When set, every endpoint except the public health probe requires the
+    ``X-Seedmail-Agent-Token`` header, so only a browser the user paired can
+    drive the agent — even one that is already on the allow-list by origin.
+    """
+    return first_env("WORKER_AGENT_TOKEN")
+
+
 # --- Google (Gmail API) -----------------------------------------------------
 #
 # Campaign delivery uses SMTP (below). Ordinary mailbox reading/sending uses the
@@ -297,5 +331,8 @@ def diagnose() -> dict:
         "queue_configured": queue_configured(),
         "gmail_api_configured": gmail_api_configured(),
         "import_hygiene_ok": not hygiene,
+        # Local-agent shape. `pairing_required` is a boolean, never the token.
+        "loopback_bind": loopback_bind(),
+        "pairing_required": bool(agent_token()),
         "problems": problems,
     }

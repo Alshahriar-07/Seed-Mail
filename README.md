@@ -108,6 +108,7 @@ simulate a mailbox.
 npm run build            # production bundle -> ./dist (what Vercel serves)
 npm test                 # node tests: renderer, MIME, crypto, email HTML, API routes
 npm run check:api        # imports every api/ route and asserts its auth wiring
+npm run check:tokens     # asserts every CSS custom property is declared and every stylesheet is linked
 python -m pytest tests -q   # worker + backend tests
 npm run test:rls         # cross-user isolation against a real Supabase project (§7)
 ```
@@ -136,6 +137,7 @@ all. The precedence is spelled out in §3.3.
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | your Supabase **publishable (anon)** key |
 | `VITE_SITE_URL` | `https://mrseedmail.vercel.app` |
 | `VITE_MAIL_WORKER_URL` | the **deployed** campaign worker service URL, e.g. `https://seedmail-worker.onrender.com` (§10). Leave it **blank** for local development to use `http://127.0.0.1:8765`. |
+| `VITE_LOCAL_AGENT_URL` | *optional.* Where the Windows Local Agent listens on the visitor's computer (§10a). Default `http://127.0.0.1:8765`. A loopback value is **correct** for this variable — unlike `VITE_MAIL_WORKER_URL` — because the agent runs on the machine the browser is on. |
 | `VITE_API_BASE_URL` | *optional.* Only for a build whose `/api/gmail` lives somewhere other than this site. Leave unset in production. |
 
 Everything `VITE_`-prefixed is inlined into the public JavaScript bundle. Never
@@ -143,11 +145,17 @@ put a Supabase secret/service-role key, a Google client secret, or a Gmail App
 Password behind a `VITE_` name.
 
 > **Never set a `localhost` / `127.0.0.1` value in the Vercel environment for
-these two variables.** A deployed site cannot reach your computer. The app
-refuses to use such a value (see `frontend/js/lib/endpoints.js`), reports it as a
-configuration problem, and the build prints a warning — but the correct fix is to
-set the deployed service URL. `VITE_API_BASE_URL` normally stays unset because
-the Gmail endpoints ship with the site on the same origin.
+> `VITE_MAIL_WORKER_URL` or `VITE_API_BASE_URL`.** A deployed site cannot reach
+> your computer. The app refuses to use such a value (see
+> `frontend/js/lib/endpoints.js`), reports it as a configuration problem, and the
+> build prints a warning — but the correct fix is to set the deployed service
+> URL. `VITE_API_BASE_URL` normally stays unset because the Gmail endpoints ship
+> with the site on the same origin.
+>
+> `VITE_LOCAL_AGENT_URL` is the deliberate exception: it *is* a loopback address,
+> because the Windows Local Agent (§10a) runs on the visitor's own computer. It
+> is resolved by a separate rule (`frontend/js/lib/agent.js`) that never applies
+> to the two service URLs above.
 
 ### 3.2 Vercel — server functions (trusted, `api/gmail/*`)
 
@@ -177,7 +185,8 @@ browser.
 | `SMTP_HOST`, `SMTP_PORT`, `SEND_DELAY_SECONDS`, `SMTP_TIMEOUT_SECONDS`, `MAX_RETRIES`, `RETRY_DELAY_SECONDS` | no | sending preferences |
 | `WORKER_HOST` | yes (hosted) | `0.0.0.0` so the browser can reach it |
 | `WORKER_PORT` | no | default `8765` |
-| `WORKER_ALLOWED_ORIGINS` | recommended | comma-separated browser origins allowed by CORS |
+| `WORKER_ALLOWED_ORIGINS` | recommended | comma-separated browser origins allowed by CORS. A request from an origin not listed here is refused with 403, and the Host header is checked too (see §10a, Security) |
+| `WORKER_AGENT_TOKEN` | no | **Local Agent only.** Optional pairing secret (§10a). When set, every endpoint except `/api/worker/health` requires it in the `X-Seedmail-Agent-Token` header |
 | `WORKER_QUEUE_CONSUMER` | no | `0` runs the API without the queue consumer |
 
 > **A `VITE_`-prefixed value is never read by the worker.** The worker needs the
@@ -344,6 +353,13 @@ Real Gmail Inbox, with search (Gmail's own query syntax), pagination through
 Gmail's `nextPageToken`, refresh, message reading and attachment download.
 Sender, subject, timestamp, snippet and unread state are all Gmail's.
 
+Keyboard: in a list, `j`/`k` move a cursor through the rows, `Enter` or `o` opens
+the one it is on, `/` focuses search, `c` composes, `g` refreshes. In the reading
+view, `u` or `Esc` returns to the list, `r` replies, `f` forwards, `e` archives,
+`#` deletes and `i` toggles read/unread. A key never fires while you are typing
+in a field, and never with Ctrl/Cmd/Alt — see
+`frontend/js/lib/shortcuts.js` and `tests/js/shortcuts.test.mjs`.
+
 ### Compose Email (`#/compose`)
 To / Cc / Bcc / Subject / body; HTML or plain text; a starting point from your
 local templates; preview; attachments; validation; confirmation before sending to
@@ -502,6 +518,212 @@ Health and diagnostics:
 not currently possible without changing the delivery channel** — Edge Functions
 cannot open the SMTP socket the sender uses. §18 states the evidence, the three
 candidate designs and their costs.
+
+---
+
+## 10a. The Windows Local Agent (run the sender on your own PC)
+
+The agent is the **same Python worker** described in §10, run on the computer
+that owns the Gmail account instead of on a paid host. Nothing about the queue
+changes: a campaign is still queued in Supabase, claimed atomically with a lease,
+and delivered by whichever worker claims it first (§9, §10). That is what makes
+the two interchangeable and what keeps *running two senders* safe — two workers
+can never send the same campaign, because the claim is a row-locked database
+operation, not a local decision.
+
+Why you might prefer it: no monthly host to pay for, the App Password never
+leaves your machine, and there is nothing to deploy.
+
+### What needs the agent, and what does not
+
+| Feature | Needs the agent? | Where it runs |
+| --- | --- | --- |
+| Inbox, Sent, search, reading a message, attachments | **No** | Gmail API via the Vercel functions |
+| Compose, send an ordinary email, Gmail drafts | **No** | Gmail API via the Vercel functions |
+| Recipients, templates, campaigns, history | **No** | Supabase (RLS per user) |
+| Dashboard, Profile, Settings, legal pages | **No** | Supabase / static site |
+| **Sending a campaign to your recipient list** | **Yes** | Gmail SMTP, from the agent |
+| Store the Gmail **App Password** | **Yes** | The agent's own process environment |
+
+If the agent is not running, the website loads and behaves normally; queued
+campaigns simply wait. Nothing is lost, because the queue is in Postgres.
+
+### Gmail API (OAuth) vs Gmail SMTP — the distinction that matters
+
+The two channels are separate, and one does not grant the other:
+
+* **Reading and sending ordinary mail uses the Gmail API with OAuth 2.0.** Google
+  issues a refresh token, stored encrypted server-side (§5). No password is
+  involved.
+* **Campaign delivery uses SMTP with an App Password.** An **OAuth token does not
+  grant SMTP access** — Gmail's SMTP endpoint authenticates with a 16-character
+  App Password, and the Gmail API cannot be used to send a long sequential SMTP
+  job. Conversely, an App Password gives no access to the Gmail API.
+
+That is why the agent is configured with an App Password while Profile's Gmail
+connection uses OAuth, and why Settings and Profile say different things.
+
+### Install (Windows)
+
+Two options. Both start the identical agent.
+
+**A. With Python (no build step).**
+
+1. Install **Python 3.12+** from <https://www.python.org/downloads/> and tick
+   *Add python.exe to PATH*.
+2. Get the project (Code → Download ZIP, or `git clone`).
+3. Double-click **`start-agent.bat`** and answer its two questions: whether to
+   install the Python packages in `requirements.txt`, and whether to require a
+   pairing token. It never installs anything without asking.
+
+**B. Standalone (no Python on that machine).**
+
+1. On any Windows machine with Python, run **`build-agent.bat`** once. It produces
+   `SeedMailAgent\SeedMailAgent.exe` (see §10b).
+2. Copy the `SeedMailAgent` folder to the sending machine and run
+   `SeedMailAgent.exe` (or `start-agent.bat`, which prefers the packaged build).
+
+### Start, status and stop
+
+* **Start:** `start-agent.bat` (or `SeedMailAgent.exe`). A console window opens
+  and must stay open.
+* **Status:** open Settings (or the Dashboard) and choose **Check for local
+  agent**. The panel reports exactly one of:
+
+  | Shown state | Meaning |
+  | --- | --- |
+  | *No local agent detected* | nothing is listening on `127.0.0.1:8765` |
+  | *Agent detected* | it answered, but this account was not verified on it |
+  | *Agent detected — pairing required* | it wants the pairing token (below) |
+  | *Agent connected* | verified as you, App Password present, idle |
+  | *Agent connected — email service not configured* | no App Password yet |
+  | *Sending in progress* | a campaign is running now |
+  | *Sending completed* / *Sending failed* | the last run finished in the last 5 minutes |
+
+  The website only ever repeats what the agent reported. It cannot start the
+  agent, and it never claims to have.
+* **Stop:** close the agent's window or press Ctrl+C. A campaign mid-run stops;
+  recipients already marked `sent` are never resent when it runs again.
+* **Autostart (optional):** press `Win+R`, run `shell:startup`, and put a shortcut
+  to `start-agent.bat` there.
+
+### Configuration
+
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | agent | verifies the signed-in user (no `VITE_` prefix — see §11) |
+| `SUPABASE_SERVICE_ROLE_KEY` | agent | claims queued campaigns (**secret**) |
+| `Email`, `GAPP_PASS` | agent | the sending Gmail address and its App Password |
+| `SMTP_HOST`, `SMTP_PORT`, `SEND_DELAY_SECONDS`, `MAX_RETRIES`, … | agent | sending preferences |
+| `VITE_LOCAL_AGENT_URL` | **website build** | optional. Overrides the agent URL; the default is `http://127.0.0.1:8765` |
+| `WORKER_AGENT_TOKEN` | agent | optional pairing secret (see Security) |
+| `WORKER_ALLOWED_ORIGINS` | agent | the website origins allowed to talk to it |
+
+`Email` and `GAPP_PASS` can also be set from the website's Settings page: when the
+agent is connected the App Password is written **to the agent**, never to
+Supabase and never to the browser's storage.
+
+### Security requirements
+
+Binding to loopback is necessary but not sufficient: any page the user has open
+can try to call `http://127.0.0.1:8765`. `worker/security.py` therefore enforces:
+
+* **Origin allow-list.** A request carrying an `Origin` that is not listed is
+  refused with 403 and *without* CORS headers, so a hostile page cannot even read
+  the refusal. This is what stops a random site from sending mail through the
+  agent. Requests with no `Origin` at all are non-browser callers and still need a
+  valid Supabase token.
+* **Host-header check (DNS rebinding).** While bound to loopback, a *browser*
+  request whose `Host` is not a loopback name is refused. Otherwise
+  `evil.example` could resolve to `127.0.0.1` after the page loads and reach the
+  agent while the browser still thinks it is talking to `evil.example`.
+* **Authentication.** Every state-changing endpoint requires the caller's
+  Supabase access token, verified against Supabase Auth; the user id is never
+  taken from the request body.
+* **Optional pairing token.** With `WORKER_AGENT_TOKEN` set, every endpoint except
+  the public health probe requires the `X-Seedmail-Agent-Token` header. Only a
+  browser you pasted the token into can drive the agent. Off by default.
+* **Private Network Access.** Chrome requires
+  `Access-Control-Allow-Private-Network: true` on the preflight before an https
+  page may reach loopback; the agent answers it, or the deployed site could not
+  reach the agent at all.
+* **Not an open relay.** The only thing the agent can send is a campaign that is
+  already queued in your own account, to your own recipients, one at a time, with
+  the existing retry and duplicate-send rules. There is no "send to this address"
+  endpoint for a third party to reach.
+
+No Supabase service-role key, App Password, OAuth client secret or refresh token
+is ever placed in the browser bundle or in a `VITE_` variable.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| Panel says *No local agent detected* | the console window is closed, or it failed to start. Run `start-agent.bat` and read the window. |
+| Panel says *Agent detected* but never *connected* | the agent cannot verify users: set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on the agent (not the `VITE_` names) and restart it. |
+| Panel says *pairing required* | start the agent again and copy the token it printed into the panel, then **Save token**. |
+| Start works, then every request 500s | a module in `worker/` is shadowing the standard library; the worker refuses to start for this reason (§11d) and prints the file name. |
+| Console closes instantly | Python is missing, or the packages are not installed — run `start-agent.bat` again and read its message. |
+| Works in one browser, not another | Firefox and Safari restrict public→loopback requests more aggressively than Chrome and Edge. Use Chrome/Edge, or serve the site locally. |
+| Campaign stuck at *queued* | the agent is not running, or has no App Password. The queue is durable — it sends when the agent returns. |
+
+### Verifying an agent by hand
+
+```bash
+curl -s http://127.0.0.1:8765/api/worker/health | python -m json.tool
+# "agent": true, "smtp_configured": true  -> running and ready to send
+# "bind_loopback": true                   -> reachable from this machine only
+# "pairing_required": false               -> no pairing token needed
+```
+
+An agent that answers but reports `configuration_problems` is *running and
+misconfigured*, which is a different fix from *not running*.
+
+---
+
+## 10b. Building the standalone agent (optional)
+
+`build-agent.bat` wraps PyInstaller so the agent can run on a machine with no
+Python. It is optional: `start-agent.bat` with Python installed runs the same
+code.
+
+```
+build-agent.bat      ->  .\SeedMailAgent\SeedMailAgent.exe   (a folder to copy)
+```
+
+It is `.gitignore`d on purpose — the packaged agent is a build artifact, not
+source. Reproduce it rather than committing a binary. Three of the script's
+choices are load-bearing, and its header explains each:
+
+* `--onedir`, not `--onefile`: a single-file build unpacks to a temporary
+directory on every start, which is slow for a long-running agent and trips
+antivirus heuristics.
+* `--distpath .`, so the result is `.\SeedMailAgent\` — exactly where
+`start-agent.bat` looks for it.
+* `--collect-all` for FastAPI, uvicorn, pydantic, dotenv and httpx, because each
+imports parts of itself lazily and static analysis alone misses them.
+
+The `.env` for a packaged agent lives **next to the executable**
+(`SeedMailAgent\.env`), not inside the bundle — both the startup loader and the
+Settings page resolve it through `services/storage.py`, which is frozen-aware.
+That is what makes the folder portable: copy it, put the Supabase values in that
+one file, and run it.
+
+### What was verified, and what was not
+
+Built and exercised in this environment (Windows 11, Python 3.12.10,
+PyInstaller):
+
+```
+SeedMailAgent\SeedMailAgent.exe           9.4 MB, launches, serves on 127.0.0.1:8765
+GET /api/worker/health                    -> 200, "agent": true, "bind_loopback": true
+GET /api/worker/health (Origin: evil)     -> 403
+GET /api/worker/health (Origin: the site) -> 200
+SeedMailAgent\.env                        -> read (supabase_configured false -> true)
+```
+
+The packaged agent was **not** signed, not installed as a Windows service, and
+not run through a real campaign send here; §16 records those limits.
 
 ---
 
@@ -866,6 +1088,11 @@ filesystem usage and no long-running process on Vercel.
 | Credential leakage to the client | No `VITE_` secret, no token in a response, no token in a URL or log |
 | Duplicate mail | `sent` is never resent; `unknown` is never auto-retried; submit lock in Compose |
 | Route permission mix-ups | Every `api/gmail/*` route uses `authed()`; `npm run check:api` asserts it |
+| A hostile page sending mail through the local agent | `Origin` allow-list enforced in `worker/security.py`; an unlisted origin gets 403 with no CORS headers, so it cannot even read the refusal (§10a) |
+| DNS rebinding against the local agent | a browser request to a loopback-bound agent must carry a loopback `Host`, otherwise 403 |
+| An unpaired browser driving the agent | optional `WORKER_AGENT_TOKEN`; every endpoint except the public health probe then requires `X-Seedmail-Agent-Token` |
+| An https page silently blocked from the agent | Chrome's Private Network Access preflight is answered (`allow_private_network=True`), so the agent is reachable *and* its origin rules still apply |
+| The agent acting as an open relay | it can only send a campaign already queued in the caller's own account; there is no arbitrary-recipient endpoint |
 
 Not implemented, and therefore not claimed: a Content-Security-Policy for the
 application page itself, rate limiting, and audit logging.
@@ -945,7 +1172,9 @@ hide a genuine mismatch rather than fix it.
 │   │   ├── profile.js           # account + Gmail connection
 │   │   ├── about.js             # capabilities and runtime status
 │   │   ├── mail-common.js       # shared mailbox UI + message reader
-│   │   └── lib/                 # endpoints, supabase, gmail, email-html, worker, render, stores
+│   │   ├── agent-panel.js       # Local Agent status card + setup instructions (§10a)
+│   │   └── lib/                 # endpoints, supabase, gmail, email-html, worker, agent,
+│   │                            #   shortcuts, render, stores
 │   └── public/                  # robots.txt, sitemap.xml, favicon.svg, og-image.png
 ├── api/gmail/                   # Vercel Node functions: the Gmail backend
 │   ├── status.js  connect.js  callback.js  disconnect.js
@@ -954,13 +1183,17 @@ hide a genuine mismatch rather than fix it.
 ├── worker/                      # Python campaign worker (FastAPI + SMTP + queue consumer)
 │   ├── main.py  auth.py  config.py  sender.py  campaign_queue.py
 │   │                            #   ↑ NOT queue.py — see §11d
+│   ├── security.py              # Origin/Host guard + pairing token (§10a)
 │   └── queue_worker.py  supabase_client.py  settings_overrides.py
 ├── services/                    # shared, tested business logic (SMTP engine, templates)
+├── start-agent.bat              # Windows Local Agent launcher (§10a)
+├── build-agent.bat              # optional PyInstaller build for a Python-free agent (§10b)
 ├── app.py                       # legacy local app + static server for ./dist
 ├── supabase/migrations/         # 0001 schema · 0002 RLS · 0003 queue · 0004 Gmail
 ├── tests/                       # pytest (worker, backend) and node tests (JS + API routes)
 ├── tools/check-api.mjs          # imports every api route and checks its auth wiring
 ├── tools/check-syntax.mjs       # parses every frontend/api/backend module (npm run check:syntax)
+├── tools/check-tokens.mjs       # catches var(--token) references with no declaration, or an unlinked stylesheet
 └── vercel.json                  # Vite build, functions, SPA rewrite, security headers
 ```
 
@@ -991,6 +1224,24 @@ hide a genuine mismatch rather than fix it.
    OAuth client, the Vercel environment variables, migration `0004` and the worker
    host are configured as described above. Real end-to-end mail delivery has not
    been exercised from this environment — see §17 for exactly what is outstanding.
+8. **The Local Agent sends only while the computer is on and the window is open**
+   (§10a). That is the trade for not paying for an always-on host. A campaign is
+   never lost: it stays queued in Postgres and is delivered the next time the
+   agent runs. Sleep, the OS closing the window, and a reboot all stop sending.
+9. **The Local Agent is Python, not a signed installer.** `start-agent.bat` runs
+   the existing worker; `build-agent.bat` produces an unpackaged `.exe` folder.
+   There is no signed `.msi`, no auto-update, and no Windows service, so Windows
+   SmartScreen may warn on first run of a self-built executable.
+10. **The local-agent panel was verified by unit tests and a production build,
+    not against a real agent running in a browser.** The state machine, the URL
+    resolution and the server-side origin policy are all covered by tests (§17),
+    and the packaged agent was started and driven with `curl`, but the end-to-end
+    click-through in a browser tab has not been performed from this environment.
+11. **No star / important indicator.** Gmail's `STARRED` and `IMPORTANT` labels
+    are read into `labels` but are not rendered or toggleable, so the inbox row
+    does not offer a star. The reader can mark read/unread, archive and trash, but
+    not star. Adding it needs a `modify` action for `STARRED` (§6) and a row
+    indicator; it is not implemented rather than faked.
 
 ---
 
@@ -1012,8 +1263,12 @@ commit can create.
 | Worker container image | `worker/Dockerfile`, built from the repository root. **Not built here** — Docker is unavailable in this environment; the equivalent file set was executed directly and started correctly |
 | Worker config from host env vars | `smtp_configured` is `true` with only environment variables set and no `.env` (§3.3). Measured before/after: `false` → `true` |
 | Import hygiene | the shadowing module is gone, a guard refuses to start if it returns, `import_hygiene_ok` is reported (§11d) |
-| Python suite | `python -m pytest tests/` — 116 passing |
-| JS suite | `npm test` — 97 passing: crypto, MIME, email-html, endpoints, api-route, legal-document and app-shell tests |
+| Python suite | `python -m pytest tests/` — 141 passing, including `tests/test_worker_security.py` (origin allow-list, DNS-rebinding Host rule, pairing token, Private Network Access) and `tests/test_agent_status.py` (last-run reporting, frozen `.env` location) |
+| JS suite | `npm test` — 185 passing: crypto, MIME, email-html, endpoints, api-route, legal-document, app-shell, local-agent and keyboard-shortcut tests |
+| Local Agent status | `frontend/js/lib/agent.js` + `tests/js/agent.test.mjs`: the six states (not detected / detected / pairing / not configured / connected / sending / completed / failed) are derived from the agent's real answers, and a loopback agent URL is only ever used for the agent — never for the two deployed service URLs (§10a) |
+| Local Agent request protection | `worker/security.py` + `tests/test_worker_security.py`: an unlisted `Origin` gets 403 with no CORS headers, a non-loopback `Host` on a loopback bind gets 403, and the health probe stays open so an unpaired site can still detect the agent |
+| Standalone Windows agent | `build-agent.bat` actually produced `SeedMailAgent\SeedMailAgent.exe` (9.4 MB, PyInstaller, Windows 11 / Python 3.12.10). It was started and driven: `/api/worker/health` → 200 with `agent: true` and `bind_loopback: true`; `Origin: https://evil.example` → **403**; an allowed origin → **200**; and `SeedMailAgent\.env` was read (`supabase_configured` `false` → `true`) (§10b) |
+| Agent configuration is portable | `services/storage.py` resolves `.env` next to the executable when frozen, so the packaged folder can be copied and configured in one place (`tests/test_agent_status.py`) |
 | Public legal pages | `/privacy` and `/terms` render without a session; verified in headless Chrome against the built bundle (§19) |
 | Layout visibility | `tests/js/app-shell.test.mjs` pins the invariant that made a signed-in reader's "Open app" link do nothing: showing a legal document hides `#app-shell`, and `renderAppRoute()` must restore it. Not reproduced with a live session here — see §19 |
 | No secret in the front-end bundle | every non-empty value in `.env` was searched for in `dist/`; the only matches are literals that already exist in `frontend/` source (a display name, the default `smtp.gmail.com`, a public GitHub URL). No credential value is present |

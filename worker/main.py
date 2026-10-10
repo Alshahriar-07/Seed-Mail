@@ -56,11 +56,17 @@ if str(ROOT) not in sys.path:
 from dotenv import load_dotenv  # noqa: E402
 
 # The worker's configuration (Gmail credentials, Supabase project, bind address,
-# allowed origins) lives in the project's .env file, exactly as documented in
-# the README. Nothing else loads that file into the process environment, so do
-# it here before the first os.getenv() call. Real environment variables win
-# (override=False), which keeps shell/Vercel-provided values authoritative.
-load_dotenv(dotenv_path=ROOT / ".env", override=False)
+# allowed origins) lives in a .env file, exactly as documented in the README.
+# Nothing else loads that file into the process environment, so do it here before
+# the first os.getenv() call. Real environment variables win (override=False),
+# which keeps shell/host-provided values authoritative.
+#
+# The path comes from services.storage so this loader and the Settings page
+# (which WRITES the file) cannot disagree — including in a packaged build, where
+# the base directory is the executable's own folder (see build-agent.bat).
+from services import storage  # noqa: E402
+
+load_dotenv(dotenv_path=storage.ENV_FILE, override=False)
 
 from services.email_service import EmailService  # noqa: E402
 from services.settings_service import settings_service  # noqa: E402
@@ -77,6 +83,7 @@ from worker.campaign_queue import (  # noqa: E402
     queue_configured,
     supabase_url,
 )
+from worker import security  # noqa: E402
 from worker.sender import CampaignManager  # noqa: E402
 from worker.settings_overrides import SettingsOverrides  # noqa: E402
 from worker.supabase_client import SupabaseRest  # noqa: E402
@@ -196,12 +203,28 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+    effective_origins = origins or allowed_origins()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or allowed_origins(),
+        allow_origins=effective_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        # `X-Seedmail-Agent-Token` is listed so a paired browser may send it.
+        allow_headers=["Authorization", "Content-Type", "X-Seedmail-Agent-Token"],
+        # Chrome's Private Network Access: without this, a page served over
+        # https (the deployed site) cannot call a loopback address at all — the
+        # browser blocks the request before it is sent, and the Local Agent
+        # would be unreachable for a reason no page could report.
+        allow_private_network=True,
+    )
+    # The origin guard must be outermost so an unlisted origin is refused before
+    # anything else runs. Starlette applies middleware in reverse order of
+    # addition, so the guard is added last.
+    app.add_middleware(
+        security.OriginGuardMiddleware,
+        allowed_origins=effective_origins,
+        loopback_bind=config.loopback_bind(),
+        agent_token=config.agent_token(),
     )
 
     def require_user(request: Request) -> dict[str, Any]:
@@ -215,6 +238,22 @@ def create_app(
     def access_token(request: Request) -> str:
         header = request.headers.get("authorization", "")
         return header[7:].strip() if header.lower().startswith("bearer ") else ""
+
+    # -- last finished run ------------------------------------------------
+    #
+    # Reported so the website can say "the last send finished" or "the last send
+    # failed" from a real record instead of inferring it from a transition it
+    # may have missed (a refresh, a restart, an expired lease). Optional: a test
+    # double need not implement it, and a missing answer is reported as null.
+
+    def last_run() -> dict[str, Any] | None:
+        getter = getattr(manager, "last_finished", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter()
+        except Exception:  # noqa: BLE001 - diagnostics must never break status
+            return None
 
     # -- queue / consumer availability ------------------------------------
     #
@@ -313,6 +352,13 @@ def create_app(
             },
             "import_hygiene_ok": diagnostics["import_hygiene_ok"],
             "configuration_problems": diagnostics["problems"],
+            # What kind of process answered, so the website can describe it
+            # correctly (a local agent on this machine, or a hosted service) and
+            # tell the user whether a pairing token is needed before it is.
+            "agent": True,
+            "app_url": "http://127.0.0.1:8765" if diagnostics["loopback_bind"] else "",
+            "bind_loopback": diagnostics["loopback_bind"],
+            "pairing_required": diagnostics["pairing_required"],
         }
 
     # -- status ----------------------------------------------------------
@@ -332,6 +378,14 @@ def create_app(
             "current_recipient": active.get("current_recipient") if active else None,
             # Real queue availability for the signed-in user.
             "queue": consumer_availability(),
+            # Local-agent shape, so Settings can distinguish "this agent has no
+            # App Password yet" from "this agent cannot see a queue consumer".
+            "agent": True,
+            "pairing_required": bool(config.agent_token()),
+            # The outcome of the most recent run this process finished, so the
+            # website can report "sending completed" or "sending failed" without
+            # inventing a status. None means nothing has run here yet.
+            "last_run": last_run(),
             "version": VERSION,
         }
 

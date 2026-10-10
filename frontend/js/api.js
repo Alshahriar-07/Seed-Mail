@@ -19,6 +19,11 @@ import {
   worker, WorkerUnavailableError, workerConfigured, workerIsLocal,
   workerUnavailableHelp, workerConfig,
 } from './lib/worker.js';
+// The Local Agent is an alternative, user-operated sender. When it is running on
+// this computer it takes precedence for the App Password and SMTP testing,
+// because a deployed worker host may not exist at all (see README §10).
+import { agentReport, saveAgentSettings, testAgentSmtp } from './lib/agent.js';
+import { currentAccessToken } from './lib/supabase.js';
 import { currentUser } from './auth.js';
 import {
   download, recipientsCsv, recipientsJson, historyCsv, historyJson, templateFileName,
@@ -516,6 +521,33 @@ function workerConfigView() {
   };
 }
 
+/**
+ * The local agent's report, or null when it cannot be reached.
+ *
+ * Never throws: the agent being absent is the normal case for most users, not
+ * an error to surface from an unrelated settings save.
+ */
+async function localAgentReport() {
+  try {
+    const token = await currentAccessToken();
+    const { report } = await agentReport({ token });
+    return report;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * True when the agent answered as this signed-in user, so it can be configured.
+ *
+ * `not_configured` is included deliberately: an agent with no App Password is
+ * exactly the one that needs to be given one.
+ */
+function agentAcceptsConfiguration(report) {
+  if (!report) return false;
+  return ['connected', 'sending', 'completed', 'failed', 'not_configured'].includes(report.state);
+}
+
 export async function getSettings() {
   const row = await loadSettingsRow();
   const result = mapSettings(row);
@@ -582,16 +614,31 @@ export async function saveSettings(data) {
   const submittedPassword = String(data.GAPP_PASS ?? '').trim();
   if (submittedPassword && submittedPassword !== PASSWORD_MASK) {
     if (submittedPassword.length < 8) throw new Error('That App Password looks too short — Gmail App Passwords are 16 characters.');
-    try {
-      await worker.saveSettings({ GAPP_PASS: submittedPassword });
-    } catch (error) {
-      if (error instanceof WorkerUnavailableError) {
-        throw new Error(
-          'Settings saved, but the Gmail App Password was NOT stored because the send worker ' +
-          `service could not be reached. ${workerUnavailableHelp()}`,
-        );
+    // Prefer the Local Agent when it is running on this computer: it is the
+    // sender the user actually operates, and a deployment may have no hosted
+    // worker at all. The password goes there and nowhere else.
+    const agent = await localAgentReport();
+    if (agentAcceptsConfiguration(agent)) {
+      const values = { GAPP_PASS: submittedPassword };
+      if (senderEmail) values.Email = senderEmail;
+      try {
+        await saveAgentSettings(values, { token: await currentAccessToken() });
+      } catch (error) {
+        throw new Error(`Settings saved, but the Local Agent refused the App Password: ${error.message}`);
       }
-      throw error;
+    } else {
+      try {
+        await worker.saveSettings({ GAPP_PASS: submittedPassword });
+      } catch (error) {
+        if (error instanceof WorkerUnavailableError) {
+          throw new Error(
+            'Settings saved, but the Gmail App Password was NOT stored because no sender is ' +
+            'reachable. Start the Local Agent on this computer, or configure a deployed send ' +
+            `worker. ${workerUnavailableHelp()}`,
+          );
+        }
+        throw error;
+      }
     }
   }
 
@@ -608,6 +655,16 @@ export async function resetSettings() {
 }
 
 export async function testSmtp() {
+  // Test whichever sender is actually configured: the local agent when it is
+  // connected, otherwise the deployed worker service.
+  const agent = await localAgentReport();
+  if (agentAcceptsConfiguration(agent)) {
+    try {
+      return await testAgentSmtp({ token: await currentAccessToken() });
+    } catch (error) {
+      return { ok: false, category: 'agent', message: `The Local Agent could not test SMTP: ${error.message}` };
+    }
+  }
   try {
     return await worker.testSmtp();
   } catch (error) {

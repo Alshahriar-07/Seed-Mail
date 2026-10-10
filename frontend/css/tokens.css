@@ -1,0 +1,203 @@
+/* Seed Code Mail — design tokens
+   ===========================================================================
+   The single source of truth for colour, type, space, elevation, radius,
+   motion and stacking order. Loaded before every other stylesheet, so every
+   rule in the application can be expressed in terms of these values.
+
+   Two rules keep this file honest:
+
+   1. **No raw values outside this file.** A colour, radius, shadow, duration or
+      easing literal anywhere else is a bug — it is how a design system drifts.
+   2. **The legacy names stay.** `--white`, `--black`, `--border`, `--muted`,
+      `--radius`, `--shadow` and friends are aliased to the new scale at the
+      bottom rather than deleted, because every existing stylesheet and a few
+      inline styles reference them. Renaming them would be churn with no visual
+      benefit; aliasing means the whole application moves to the new scale in one
+      step and nothing silently falls back to an undefined variable.
+
+   Direction: the product is a monochrome instrument — paper and ink. The ramp
+   below is a *warm* neutral (a trace of yellow rather than blue) because blue
+   greys are what generic admin dashboards are made of, and the flat #F7F7F7 /
+   #E5E5E5 pair this file replaces read as "unfinished" rather than "minimal".
+
+   One accent is introduced, and only one: a deep teal, chosen over the usual
+   indigo/violet because it reads as instrumentation rather than as a template,
+   and because it does not collide with the semantic green (success) or amber
+   (warning) that the status badges depend on. It is used for exactly one job —
+   *interactive affordance*: focus rings, links, selected indicators, progress.
+   It is never a surface colour and never decoration.
+   =========================================================================== */
+
+:root {
+  /* --- Neutral ramp (warm paper → ink) ------------------------------------ */
+  --n-0:    #FFFFFF;
+  --n-25:   #FCFCFB;
+  --n-50:   #F8F8F6;
+  --n-100:  #F2F2EF;
+  --n-150:  #ECECE8;
+  --n-200:  #E4E4DF;
+  --n-300:  #D3D3CD;
+  --n-400:  #A9A9A2;
+  --n-500:  #7C7C76;
+  --n-550:  #6A6A64;  /* 5.4:1 on white — placeholders and small print */
+  --n-600:  #5C5C57;  /* 6.7:1 on white — secondary body text */
+  --n-700:  #454542;
+  --n-800:  #2C2C2A;
+  --n-900:  #1A1A19;
+  --n-950:  #101010;
+
+  /* --- Accent (interactive affordance only) ------------------------------- */
+  --accent:          #0F766E;  /* 5.5:1 on white — text-safe */
+  --accent-emphasis: #115E59;
+  --accent-bg:       #F0FDFA;
+  --accent-border:   #99F6E4;
+  --accent-ring:     rgba(15, 118, 110, 0.28);
+
+  /* --- Semantic (status only, never decoration) --------------------------- */
+  --success:     #15803D;
+  --success-bg:  #ECFDF3;
+  --success-border: #BBF7D0;
+  --error:       #B91C1C;
+  --error-bg:    #FEF2F2;
+  --error-border: #FECACA;
+  --warning:     #B45309;
+  --warning-bg:  #FFFBEB;
+  --warning-border: #FDE68A;
+  --unknown:     #525252;
+  --unknown-bg:  #F5F5F3;
+
+  /* --- Text & surfaces ---------------------------------------------------- */
+  --text:            var(--n-900);
+  --text-muted:      var(--n-600);
+  --text-subtle:     var(--n-500);
+  --text-placeholder: var(--n-550);
+  --text-inverse:    var(--n-0);
+
+  --bg:              var(--n-50);
+  --surface:         var(--n-0);
+  --surface-raised:  var(--n-0);
+  --surface-sunken:  var(--n-100);
+  --surface-hover:   var(--n-50);
+
+  --border:          var(--n-200);
+  --border-strong:   var(--n-300);
+  --border-subtle:   var(--n-150);
+
+  /* --- Type ------------------------------------------------------------- */
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: 'SFMono-Regular', ui-monospace, 'Cascadia Code', Consolas, 'Liberation Mono', monospace;
+
+  --text-2xs:  11px;
+  --text-xs:   11.5px;
+  --text-sm:   12.5px;
+  --text-base: 13.5px;
+  --text-md:   14px;
+  --text-lg:   15px;
+  --text-xl:   17px;
+  --text-2xl:  20px;
+  --text-3xl:  24px;
+  --text-4xl:  30px;
+
+  --leading-tight: 1.25;
+  --leading-snug:  1.4;
+  --leading-base:  1.55;
+  --leading-relaxed: 1.7;
+
+  --tracking-tight:  -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide:   0.05em;
+  --tracking-caps:   0.08em;
+
+  /* --- Space (4px rhythm) ------------------------------------------------ */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* --- Radius ------------------------------------------------------------
+     Prefixed `--r-` rather than `--radius-`: the legacy aliases at the bottom of
+     this file are *named* `--radius-sm` / `--radius` / `--radius-lg`, and a
+     token cannot be aliased to itself — a self-referential custom property is a
+     cycle, which would invalidate the value everywhere it is used. */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-full: 999px;
+
+  /* --- Elevation (layered, low-opacity, ink-tinted) ----------------------- */
+  --elev-0: none;
+  --elev-1: 0 1px 1px rgba(26, 26, 25, 0.04), 0 1px 3px rgba(26, 26, 25, 0.04);
+  --elev-2: 0 1px 1px rgba(26, 26, 25, 0.03), 0 2px 6px -1px rgba(26, 26, 25, 0.06);
+  --elev-3: 0 2px 4px -1px rgba(26, 26, 25, 0.05), 0 8px 20px -4px rgba(26, 26, 25, 0.09);
+  --elev-4: 0 4px 8px -2px rgba(26, 26, 25, 0.06), 0 18px 40px -8px rgba(26, 26, 25, 0.16);
+  --elev-5: 0 8px 16px -4px rgba(26, 26, 25, 0.08), 0 32px 64px -16px rgba(26, 26, 25, 0.24);
+
+  /* An inset hairline that makes a flat surface read as physically raised on
+     the page background without resorting to a heavier drop shadow. */
+  --elev-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ring-focus: 2px solid var(--accent);
+  --ring-offset: 2px;
+
+  /* --- Motion ------------------------------------------------------------
+     Durations are deliberately short. Anything above ~300ms on a hover or a
+     press reads as lag; only entrances are allowed to be longer, and even they
+     stay under half a second so navigation never feels slowed down. */
+  --dur-1:  90ms;   /* press feedback */
+  --dur-2:  140ms;  /* hover / colour */
+  --dur-3:  200ms;  /* state change */
+  --dur-4:  280ms;  /* entrance */
+  --dur-5:  380ms;  /* route change */
+
+  --ease-standard:  cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit:      cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-pop:       cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  /* --- Layout ------------------------------------------------------------ */
+  --sidebar-w: 264px;
+  --sidebar-w-collapsed: 74px;
+  --topbar-h: 60px;
+  --content-max: 1280px;
+  --reading-max: 760px;
+
+  /* --- Stacking ---------------------------------------------------------- */
+  --z-base: 1;
+  --z-sticky: 30;
+  --z-drawer: 40;
+  --z-scrim: 35;
+  --z-overlay: 80;
+  --z-toast: 90;
+  --z-skip: 100;
+
+  /* === Legacy aliases =====================================================
+     Every name below is referenced by an existing stylesheet. They are kept,
+     and pointed at the new scale, so the redesign applies everywhere at once
+     without a rename sweep that could miss a usage. */
+  --white:      var(--surface);
+  --black:      var(--n-950);
+  --page-bg:    var(--bg);
+  --surface-2:  var(--surface-sunken);
+  --muted:      var(--text-muted);
+  --muted-2:    var(--text-subtle);
+
+  --radius-xs:  var(--r-xs);
+  --radius-sm:  var(--r-sm);
+  --radius-md:  var(--r-md);
+  --radius:     var(--r-md);
+  --radius-lg:  var(--r-lg);
+  --radius-xl:  var(--r-xl);
+
+  --shadow-sm:  var(--elev-1);
+  --shadow:     var(--elev-2);
+  --shadow-lg:  var(--elev-4);
+
+  --ease:       var(--ease-emphasized);
+}

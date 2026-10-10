@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -18,7 +19,27 @@ from typing import Any
 # Paths (always relative to this project, never the terminal working dir)
 # ---------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+
+def _base_dir() -> Path:
+    """The directory that holds `.env` and `data/`.
+
+    Normally this is the project root, two levels above this file. A packaged
+    build (PyInstaller, see build-agent.bat) puts its code and data under an
+    `_internal` folder, so the same expression would resolve *inside* the bundle —
+    configuration the user edits, and the App Password the Settings page writes,
+    would end up hidden one directory deeper than the executable.
+
+    For a frozen build the base is therefore the executable's own directory, so
+    `SeedMailAgent\\.env` sits next to `SeedMailAgent.exe` where someone can find
+    it. Reads and writes both go through this value, so the Settings page and the
+    startup loader can never disagree about which file is in use.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = _base_dir()
 DATA_DIR = BASE_DIR / "data"
 LOGS_DIR = BASE_DIR / "logs"
 FRONTEND_DIR = BASE_DIR / "frontend"

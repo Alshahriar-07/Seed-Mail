@@ -50,7 +50,10 @@ if str(ROOT) not in sys.path:
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(dotenv_path=ROOT / ".env", override=False)
+# Same path as worker/main.py and the Settings page: see services/storage.py.
+from services import storage  # noqa: E402
+
+load_dotenv(dotenv_path=storage.ENV_FILE, override=False)
 
 from services.settings_service import settings_service  # noqa: E402
 from worker import config  # noqa: E402

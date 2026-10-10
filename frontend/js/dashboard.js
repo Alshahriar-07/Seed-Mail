@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { gmail } from './lib/gmail.js';
 import { escapeHtml, icon, formatDate, refreshIcons, statusBadge, skeleton, emptyState } from './ui.js';
 import { navigate } from './app.js';
+import { agentCardMarkup, bindAgentCard } from './agent-panel.js';
 
 function statCard({ label, value, iconName }) {
   return `
@@ -90,6 +91,10 @@ export async function render(container) {
       <div class="loading-inline"><span class="spinner"></span><span>Checking Gmail connection</span></div>
     </div>
 
+    <div style="margin-top:20px;" id="agent-card-host">
+      <div class="card"><div class="loading-inline"><span class="spinner"></span><span>Looking for the Local Agent on this computer</span></div></div>
+    </div>
+
     <div class="card" style="margin-top:20px;">
       <div class="card-head"><h3>Recent sending activity</h3>
         <button class="btn btn-ghost btn-sm" data-goto-history>View all</button></div>
@@ -98,6 +103,14 @@ export async function render(container) {
   `;
 
   refreshIcons(container);
+
+  // The Local Agent is reported here because it is the one part of the product
+  // that runs on the user's own computer, and "is it running?" is the first
+  // question when a campaign will not go out. It never blocks the page.
+  const agentHost = container.querySelector('#agent-card-host');
+  agentHost.innerHTML = agentCardMarkup({ compact: true });
+  refreshIcons(agentHost);
+  bindAgentCard(agentHost);
 
   container.querySelector('[data-goto-settings]')?.addEventListener('click', () => navigate('settings'));
   container.querySelector('[data-goto-history]')?.addEventListener('click', () => navigate('history'));

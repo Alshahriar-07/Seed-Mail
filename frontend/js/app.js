@@ -10,6 +10,7 @@ import {
   renderAuthLoading, renderAuthInitFailure,
 } from './auth.js';
 import { avatarInner, refreshAvatars, safeImageUrl } from './lib/avatar.js';
+import { agentReport } from './lib/agent.js';
 import * as inbox from './inbox.js';
 import * as compose from './compose.js';
 import * as sent from './sent.js';
@@ -305,6 +306,17 @@ export async function refreshTopbar() {
 
   try {
     const worker = await api.workerStatus();
+    // The Local Agent runs on this computer, so when it is connected it is the
+    // sender the user actually operates and it is reported first. A failed probe
+    // is not an error here: most users do not run one.
+    let agent = null;
+    try {
+      agent = (await agentReport()).report;
+    } catch (_) {
+      agent = null;
+    }
+    const agentReady = Boolean(agent && ['connected', 'sending', 'completed'].includes(agent.state));
+
     // "Ready" means the API answered *and* the durable queue consumer has
     // reported in recently *and* an App Password exists. Any other combination
     // is reported honestly rather than as a generic failure.
@@ -312,20 +324,25 @@ export async function refreshTopbar() {
     const consumerOnline = consumer ? Boolean(consumer.consumer_online) : true;
     const ready = Boolean(worker.available && worker.has_password && consumerOnline);
     const starting = Boolean(worker.available && worker.has_password && consumer && consumer.configured && !consumerOnline);
-    const state = !worker.available ? 'offline' : (ready ? 'ready' : (starting ? 'starting' : 'password'));
+    const state = agentReady
+      ? 'agent'
+      : (!worker.available ? 'offline' : (ready ? 'ready' : (starting ? 'starting' : 'password')));
     const labelText = {
+      agent: 'Local Agent ready',
       ready: 'Send worker ready',
       starting: 'Send worker starting',
       password: 'App Password needed',
       offline: worker.configured === false ? 'Worker not configured' : 'Worker unreachable',
     }[state];
 
-    indicator?.classList.toggle('is-ok', ready);
-    indicator?.classList.toggle('is-off', state === 'offline' || state === 'password');
+    const anySenderReady = ready || agentReady;
+    indicator?.classList.toggle('is-ok', anySenderReady);
+    indicator?.classList.toggle('is-off', !agentReady && (state === 'offline' || state === 'password'));
     if (label) label.textContent = labelText;
-    if (led) led.className = 'status-led ' + (ready ? 'is-ok' : state === 'starting' ? '' : 'is-off');
+    if (led) led.className = 'status-led ' + (anySenderReady ? 'is-ok' : state === 'starting' ? '' : 'is-off');
     if (status) {
       status.textContent = {
+        agent: `Local Agent — ${agent.detail}`,
         ready: 'Send worker ready',
         starting: 'Send worker starting — campaigns wait in the queue',
         password: 'Send worker: Gmail App Password missing',
