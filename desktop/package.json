@@ -1,0 +1,74 @@
+{
+  "name": "seed-code-mail-desktop",
+  "productName": "Seed Code Mail",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Seed Code Mail desktop application — the web UI, the bundled campaign SMTP worker, and the cloud API.",
+  "author": "Seed Code Mail",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "public-config": "node scripts/public-config.mjs",
+    "build:worker": "node scripts/build-worker.mjs",
+    "dist": "electron-builder --win --x64",
+    "dist:portable": "electron-builder --win portable --x64",
+    "dist:nsis": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.seedcodemail.desktop",
+    "productName": "Seed Code Mail",
+    "copyright": "Copyright © Seed Code Mail",
+    "asar": true,
+    "compression": "normal",
+    "directories": {
+      "output": "release",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "preload-setup.js",
+      "setup.html",
+      "lib/**/*",
+      "generated/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "app",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../build/worker-dist/SeedMailWorker",
+        "to": "worker",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "icon": "build-resources/icon.ico",
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "portable": {
+      "artifactName": "Seed-Code-Mail-win64.exe"
+    },
+    "nsis": {
+      "artifactName": "Seed-Code-Mail-Setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Seed Code Mail",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

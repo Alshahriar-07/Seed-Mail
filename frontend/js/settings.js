@@ -1,12 +1,99 @@
 // Seed Code Mail - settings page
 
 import { api } from './api.js';
-import { escapeHtml, icon, refreshIcons, toast, spinner, confirmDialog } from './ui.js';
+import { escapeHtml, icon, refreshIcons, toast, spinner, confirmDialog, openModal } from './ui.js';
 import { refreshTopbar } from './app.js';
 import { agentCardMarkup, bindAgentCard } from './agent-panel.js';
 
 let host = null;
 let snapshot = null;
+
+const APP_PASSWORDS_URL = 'https://myaccount.google.com/apppasswords';
+
+/**
+ * The "How to create a Gmail App Password" help panel.
+ *
+ * It is written for someone who has never made one: the requirements, the exact
+ * steps, the SMTP values Seed Code Mail uses, and what each authentication
+ * failure means. Nothing here is credential-shaped, and the direct Google link
+ * is the official settings page rather than a search result.
+ */
+function appPasswordHelpHtml() {
+  return `
+    <div class="help-panel">
+      <p><strong>A Gmail App Password is a 16-character password Google generates for one specific app</strong>
+      — here, Seed Code Mail. It is used when 2-Step Verification is on, and it lets the send worker sign in to
+      Gmail's SMTP service without ever knowing your real Google password. You can revoke it at any time
+      without changing your Google password.</p>
+
+      <h4>Before you start</h4>
+      <ul>
+        <li>Be signed in to the Google Account you want to send from.</li>
+        <li><strong>2-Step Verification must be turned on.</strong> Google only offers App Passwords on accounts
+        that have it enabled — if the App Passwords page says the feature is unavailable, turn on 2-Step
+        Verification first, then try again.</li>
+        <li>Availability depends on the account and its security setup. Work, school and Advanced Protection
+        accounts, and accounts managed by a security policy, often cannot create App Passwords at all. In that
+        case use the Gmail API connection on the Profile page instead.</li>
+      </ul>
+
+      <h4>Create the App Password</h4>
+      <ol>
+        <li>Open <a href="${APP_PASSWORDS_URL}" target="_blank" rel="noopener noreferrer">${APP_PASSWORDS_URL.replace('https://', '')}</a>.</li>
+        <li>Sign in to the Google Account you want to send from, if you are asked to.</li>
+        <li>Enter an app name — for example <em>Seed Code Mail</em> — and choose <strong>Create</strong>.</li>
+        <li>Google shows a 16-character password, usually as four groups of four (for example
+        <code>abcd efgh ijkl mnop</code>). Copy it now: you cannot see it again.</li>
+        <li>Come back here, paste it into <strong>Gmail App Password</strong>, and choose <strong>Save settings</strong>.</li>
+      </ol>
+
+      <h4>SMTP settings Seed Code Mail uses</h4>
+      <ul>
+        <li><strong>SMTP host:</strong> <code>smtp.gmail.com</code></li>
+        <li><strong>Port:</strong> <code>465</code> for SSL (recommended) or <code>587</code> for STARTTLS</li>
+        <li><strong>Username:</strong> your full Gmail address — the one in <strong>Sender Gmail address</strong></li>
+        <li><strong>Password:</strong> the App Password you just created, never your normal Google password</li>
+      </ul>
+
+      <h4>Authentication failures and how to fix them</h4>
+      <ul>
+        <li><strong>535 5.7.8 Username and Password not accepted</strong> — the value is not a valid App Password,
+        or it was revoked. Create a new one and save it again. Make sure it is the 16-character App Password,
+        not your Google password.</li>
+        <li><strong>534 5.7.9 Application-specific password required</strong> — 2-Step Verification is on but the
+        normal password is being used. Create and use an App Password.</li>
+        <li><strong>Wrong sender / invalid address</strong> — the username must be the exact Gmail address in
+        <strong>Sender Gmail address</strong>. Gmail will not send from a different address over this connection.</li>
+        <li><strong>Connection timed out</strong> — try port 465 (SSL). A network that blocks outbound SMTP blocks
+        both ports.</li>
+      </ul>
+
+      <div class="notice">${icon('shield', 16)}<span>Keep your App Password secret. Never share it with another
+      person, and never post it in a chat, a ticket or a screenshot. Store it only where it is needed — here it
+      is written to your send worker only, never to your account database or the browser's storage. If it is ever
+      exposed, delete it on the Google App Passwords page and create a new one.</span></div>
+    </div>`;
+}
+
+function openAppPasswordHelp() {
+  openModal({
+    title: 'How to create a Gmail App Password',
+    size: 'lg',
+    body: appPasswordHelpHtml(),
+    actions: [
+      {
+        label: 'Open Google App Passwords',
+        variant: 'btn-secondary',
+        closeOnClick: false,
+        onClick: () => {
+          window.open(APP_PASSWORDS_URL, '_blank', 'noopener,noreferrer');
+          return false;
+        },
+      },
+      { label: 'Close', variant: 'btn-primary' },
+    ],
+  });
+}
 
 /**
  * A one-line, accurate description of the send worker's state.
@@ -78,6 +165,9 @@ function paint(data) {
         ${field('s-name', 'Sender display name', v.SENDER_NAME)}
         ${field('s-github', 'GitHub URL (optional)', v.GITHUB_URL, { hint: 'Used by the {{GITHUB_URL}} template variable. Leave blank if unused.', wide: true })}
         ${field('s-pass', 'Gmail App Password', '', { type: 'password', hint: data.has_password ? 'An App Password is configured on the send worker. Leave blank to keep it unchanged.' : 'No password configured yet. Paste your 16-character Gmail App Password — it is sent only to the worker service, never stored in the browser or the database.', wide: true })}
+        <div class="field" style="grid-column:1 / -1; margin-top:-4px;">
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-app-password-help">${icon('circle-help', 15)} How to create a Gmail App Password</button>
+        </div>
         <div class="kv"><span>Send worker</span><span>${escapeHtml(workerStateLabel(data.worker))}</span></div>
       </div>
 
@@ -98,6 +188,12 @@ function paint(data) {
       </div>
     </div>`;
   refreshIcons(host);
+
+  // Bound on every paint, because the form is re-rendered after a save.
+  host.querySelector('#btn-app-password-help')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    openAppPasswordHelp();
+  });
 }
 
 function collect() {

@@ -40,21 +40,26 @@ test('script, iframe, object, embed, base and form markup is stripped', () => {
   assert.ok(clean.includes('<p>hello</p>'), 'legitimate content is preserved');
 });
 
-test('remote images are blocked by default', () => {
-  const doc = buildEmailDocument({ html: '<img src="https://tracker.example/pixel.gif">' });
+test('remote images load by default while everything executable stays blocked', () => {
+  const doc = buildEmailDocument({ html: '<img src="https://cdn.example/logo.png">' });
   assert.match(doc, /Content-Security-Policy/);
-  assert.match(doc, /img-src data:/);
-  assert.ok(!doc.includes('img-src * data:'), 'a wildcard image source must not be the default');
+  assert.match(doc, /img-src \* data:/, 'remote images load automatically');
+  assert.match(doc, /src="https:\/\/cdn\.example\/logo\.png"/, 'and the URL is kept byte for byte');
   assert.match(doc, /default-src 'none'/);
   assert.match(doc, /script-src 'none'/);
   assert.match(doc, /form-action 'none'/);
   assert.match(doc, /<meta name="referrer" content="no-referrer">/);
 });
 
-test('remote images are allowed only when explicitly requested', () => {
-  const doc = buildEmailDocument({ html: '<img src="https://cdn.example/logo.png">', allowRemote: true });
-  assert.match(doc, /img-src \* data:/);
-  assert.match(doc, /script-src 'none'/, 'scripts stay blocked even with images allowed');
+test('images can still be blocked explicitly, and scripts stay blocked either way', () => {
+  const blocked = buildEmailDocument({ html: '<img src="https://tracker.example/pixel.gif">', allowRemote: false });
+  assert.match(blocked, /img-src data:/);
+  assert.ok(!blocked.includes('img-src * data:'));
+  assert.ok(!/(^|[\s])src="https:\/\/tracker\.example/.test(blocked), 'no live request to the tracker');
+
+  const allowed = buildEmailDocument({ html: '<img src="https://cdn.example/logo.png">', allowRemote: true });
+  assert.match(allowed, /img-src \* data:/);
+  assert.match(allowed, /script-src 'none'/, 'scripts stay blocked even with images allowed');
 });
 
 test('a plain-text-only message is rendered in a pre block, escaped', () => {
@@ -208,7 +213,7 @@ test('a data URL is built with the image type the message declared', () => {
   assert.equal(dataUrlFromBase64('image/png', ''), '');
 });
 
-test('remote images are detected so the reader can offer Show images', () => {
+test('remote image URLs are detected (diagnostics / a future block-remote setting)', () => {
   assert.equal(hasRemoteImages('<img src="https://cdn.example/logo.png">'), true);
   assert.equal(hasRemoteImages('<img src="//cdn.example/logo.png">'), true);
   assert.equal(hasRemoteImages('<img src="data:image/png;base64,AAAA">'), false);
@@ -227,7 +232,7 @@ test('a blocked remote image becomes an explained placeholder, not a broken icon
   assert.match(blocked, /width="120"/, 'the sender layout is preserved');
   assert.match(blocked, /height="40"/);
   assert.match(blocked, /alt="Logo"/);
-  assert.match(blocked, /title="[^"]*Show images/, 'the placeholder says how to load it');
+  assert.match(blocked, /title="[^"]*Remote image not loaded/, 'the placeholder explains itself');
   assert.match(blocked, /data-seedmail-original-src="https:\/\/ci3\.googleusercontent\.com\/logo\.png"/,
     'the original URL is kept for reference');
   assert.ok(blocked.includes('<p>logo '), 'surrounding content is untouched');
@@ -266,18 +271,18 @@ test('an unquoted src is read too, since a bare src is just as live', () => {
   assert.ok(!/(^|[\s])src=\/images/.test(marked), 'the bare relative URL must not survive as a live src');
 
   const remote = markUnavailableImages('<img src=https://cdn.example/a.png>', { allowRemote: false });
-  assert.match(remote, /Show images/);
+  assert.match(remote, /Remote image not loaded/);
 });
 
-test('the whole document blocks remote images by default and explains why', () => {
+test('the whole document loads remote images and keeps everything else locked down', () => {
   const document = buildEmailDocument({
-    html: '<img src="https://tracker.example/pixel.gif"><img src="data:image/png;base64,AAAA">',
+    html: '<img src="https://cdn.example/logo.png"><img src="data:image/png;base64,AAAA">',
   });
-  assert.ok(!/(^|[\s])src="https:\/\/tracker\.example/.test(document), 'no live request to the tracker');
-  assert.match(document, /data-seedmail-original-src="https:\/\/tracker\.example\/pixel\.gif"/);
+  assert.match(document, /src="https:\/\/cdn\.example\/logo\.png"/, 'a real image loads');
   assert.match(document, /data:image\/png;base64,AAAA/, 'inline bytes still render');
-  assert.match(document, /img-src data:/, 'the CSP still refuses remote sources while blocked');
+  assert.match(document, /img-src \* data:/, 'the CSP permits images');
   assert.match(document, /script-src 'none'/, 'allowing images never allows scripts');
+  assert.match(document, /form-action 'none'/);
 });
 
 test('scripts stay blocked in the document once images are allowed', () => {

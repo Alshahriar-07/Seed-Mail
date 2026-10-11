@@ -491,6 +491,27 @@ table.data td .row-actions { display: flex; gap: var(--space-1); justify-content
 }
 .modal-text { color: var(--text-muted); line-height: var(--leading-relaxed); margin: 0; }
 
+/* Long-form help shown inside a modal (currently the Gmail App Password guide).
+   Readable measure, clear sub-headings and lists, and no colour beyond the
+   existing tokens. */
+.help-panel { font-size: var(--text-sm); line-height: var(--leading-relaxed); }
+.help-panel p { margin: 0 0 var(--space-4); }
+.help-panel h4 { font-size: var(--text-base); margin: var(--space-5) 0 var(--space-2); }
+.help-panel ul,
+.help-panel ol { margin: 0 0 var(--space-4); padding-left: 20px; display: grid; gap: 6px; }
+.help-panel li { color: var(--text-muted); }
+.help-panel strong { color: var(--text); }
+.help-panel code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+.help-panel a { color: var(--accent); }
+.help-panel .notice { margin-top: var(--space-4); }
+
 /* --- Tabs ------------------------------------------------------------------ */
 
 .tabs {

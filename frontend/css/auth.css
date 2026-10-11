@@ -130,6 +130,31 @@
 .auth-card .field { margin-bottom: var(--space-4); }
 .auth-card .btn-block { justify-content: center; margin-top: var(--space-1); }
 
+/* "Continue with Google" and the divider that separates it from the
+   email/password form. The mark is monochrome so it sits inside the
+   black-and-white identity rather than importing colour brand artwork. */
+.auth-google { gap: var(--space-2); }
+.auth-google-mark { flex: none; }
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+  color: var(--text-subtle);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .auth-links {
   display: flex;
   flex-direction: column;

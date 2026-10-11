@@ -278,6 +278,35 @@ export async function signIn(email, password) {
   return data.session;
 }
 
+/**
+ * Starts Google sign-in through Supabase Auth.
+ *
+ * This authenticates the *account* only. Gmail access is a separate grant with
+ * its own scopes, obtained afterwards through the server-side Gmail OAuth flow
+ * (see mail-common.js → startConnect). The two are deliberately NOT combined:
+ * Supabase keeps provider tokens in the browser session, and a Gmail refresh
+ * token must never live there — it is encrypted and stored server-side only.
+ *
+ * The call redirects the browser to Google. When Google returns to this origin,
+ * the PKCE code exchange configured in lib/supabase.js (`detectSessionInUrl`)
+ * resolves the session and the normal auth-state handling takes over. New users
+ * are created by Supabase on first sign-in; existing users are matched by their
+ * verified Google identity, so no duplicate account is created.
+ */
+export async function signInWithGoogle() {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: redirectTo(),
+      // Always let the user pick which Google account to use, so a shared
+      // browser cannot silently reuse the previous person's identity.
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+  if (error) throw new Error(friendlyAuthError(error));
+}
+
 export async function signUp(email, password, displayName = '') {
   if (!supabase) throw new Error('Supabase is not configured.');
   const { data, error } = await supabase.auth.signUp({
@@ -429,6 +458,41 @@ function shell(route, bodyHtml, { footer = '' } = {}) {
 }
 
 /**
+ * "Continue with Google" plus the divider that separates it from the
+ * email/password form. The mark is monochrome (`currentColor`) to stay inside
+ * the application's black-and-white identity rather than importing full-colour
+ * brand artwork into the card.
+ */
+function googleButton() {
+  return `<button class="btn btn-secondary btn-block auth-google" type="button" id="auth-google">
+    <svg class="auth-google-mark" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+      <path fill="currentColor" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+      <path fill="currentColor" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
+      <path fill="currentColor" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+    </svg>
+    Continue with Google</button>
+    <div class="auth-divider"><span>or continue with email</span></div>`;
+}
+
+/** Wires the Google button on an authentication screen. */
+function bindGoogle(container, showErrorFn) {
+  const button = container.querySelector('#auth-google');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    showErrorFn('');
+    setBusy(button, true, 'Opening Google');
+    try {
+      await signInWithGoogle();
+      // The browser is being redirected to Google; nothing else runs here.
+    } catch (error) {
+      showErrorFn(error.message);
+      setBusy(button, false);
+    }
+  });
+}
+
+/**
  * Sign In / Create Account / Forgot Password links, always present on the
  * authentication screens so every flow is reachable by mouse and keyboard.
  * The current screen is marked with `aria-current`.
@@ -553,7 +617,8 @@ export async function renderAuth(container, route = 'login') {
 function renderLogin(container, urlError) {
   container.innerHTML = shell(
     'login',
-    `<form id="auth-form" novalidate>
+    `${googleButton()}
+    <form id="auth-form" novalidate>
       ${fieldHtml({ id: 'email', label: 'Email address', type: 'email', autocomplete: 'email' })}
       ${fieldHtml({ id: 'password', label: 'Password', type: 'password', autocomplete: 'current-password' })}
       <button class="btn btn-primary btn-block" type="submit" id="auth-submit">${icon('log-in', 16)} Sign in</button>
@@ -562,6 +627,7 @@ function renderLogin(container, urlError) {
   );
   refreshIcons(container);
   if (urlError) showError(container, urlError);
+  bindGoogle(container, (message) => showError(container, message));
 
   const form = container.querySelector('#auth-form');
   form.addEventListener('submit', async (event) => {
@@ -586,7 +652,8 @@ function renderLogin(container, urlError) {
 function renderSignup(container, urlError) {
   container.innerHTML = shell(
     'signup',
-    `<form id="auth-form" novalidate>
+    `${googleButton()}
+    <form id="auth-form" novalidate>
       ${fieldHtml({ id: 'name', label: 'Display name (optional)', autocomplete: 'name' })}
       ${fieldHtml({ id: 'email', label: 'Email address', type: 'email', autocomplete: 'email' })}
       ${fieldHtml({
@@ -599,6 +666,7 @@ function renderSignup(container, urlError) {
   );
   refreshIcons(container);
   if (urlError) showError(container, urlError);
+  bindGoogle(container, (message) => showError(container, message));
 
   const form = container.querySelector('#auth-form');
   form.addEventListener('submit', async (event) => {

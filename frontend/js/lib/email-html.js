@@ -8,11 +8,12 @@
 //
 //   * `sandbox=""` blocks scripts, forms, popups, top-level navigation and
 //     same-origin access, without needing to enumerate what to remove;
-//   * a strict Content-Security-Policy inside the document blocks everything
-//     except inline styles, so nothing can be fetched at all until the user
-//     explicitly chooses "Show images";
-//   * remote images are OFF by default, because a single tracking pixel reveals
-//     that the message was opened, when, and from which IP.
+//   * a strict Content-Security-Policy inside the document permits images but
+//     nothing executable: scripts, forms, frames and base URLs are all refused;
+//   * remote images load automatically, so a message renders as it was designed.
+//     The document carries `<meta name="referrer" content="no-referrer">` and is
+//     shown in a frame with `referrerpolicy="no-referrer"`, so a loaded image does
+//     not disclose which page (or application) the message was opened from.
 //
 // This mirrors how `frontend/js/lib/render.js` previews templates, so there is
 // one rendering philosophy in the project rather than two.
@@ -41,11 +42,11 @@ const NAMED_ENTITIES = { colon: ':', tab: '\t', newline: '\n', 'NewLine': '\n' }
 //      resolve against **our** origin: the sender's link rewritten into a broken
 //      application URL, which is the defect this guards against.
 //
-// Category 3 is neutralised, and remote images are neutralised until the user
-// asks for them, by substituting a small inline placeholder that keeps the
-// element's size and explains itself on hover. Nothing else about the message is
-// altered, and "Show images" re-renders the original markup so a real image is
-// what the reader finally sees.
+// Category 3 is neutralised by substituting a small inline placeholder that
+// keeps the element's size and explains itself on hover. A valid remote image is
+// passed through unchanged (the reader loads remote images automatically), so
+// nothing about a normal message is altered and a genuinely unavailable image
+// never collapses the layout or shows a broken-image icon.
 
 // A neutral grey picture glyph, inline so it needs no network request and is
 // allowed by the document's CSP (`img-src data:`).
@@ -91,8 +92,9 @@ export function isRemoteImageUrl(value) {
 }
 
 /**
- * True when a message body references at least one image on a remote host, so
- * the reader can offer "Show images" only when it would actually do something.
+ * True when a message body references at least one image on a remote host.
+ * Kept as a small pure helper for diagnostics and for a future "block remote
+ * content" preference; the reader loads remote images automatically.
  */
 export function hasRemoteImages(html) {
   const tags = String(html ?? '').match(IMG_TAG) || [];
@@ -137,11 +139,14 @@ function placeholderTag(tag, reason) {
 }
 
 /**
- * Substitutes a placeholder for every `<img>` that cannot be loaded in the
- * current mode. Everything else — including every valid `https://` URL when the
- * user has allowed remote content — is passed through byte for byte.
+ * Substitutes a placeholder for every `<img>` that cannot be loaded.
+ *
+ * By default a valid remote (`https://`) image is passed through byte for byte,
+ * because the reader loads remote images automatically. Passing
+ * `{ allowRemote: false }` keeps the same function usable for a deliberately
+ * image-blocked context (for example a future "block remote content" setting).
  */
-export function markUnavailableImages(html, { allowRemote = false } = {}) {
+export function markUnavailableImages(html, { allowRemote = true } = {}) {
   return String(html ?? '').replace(IMG_TAG, (tag) => {
     const src = imageSrc(tag);
 
@@ -154,7 +159,7 @@ export function markUnavailableImages(html, { allowRemote = false } = {}) {
     }
     if (isRemoteImageUrl(src)) {
       if (allowRemote) return tag;
-      return placeholderTag(tag, 'Remote image not loaded yet — choose Show images');
+      return placeholderTag(tag, 'Remote image not loaded');
     }
     return placeholderTag(tag, 'This image uses a relative address that cannot be loaded');
   });
@@ -245,8 +250,8 @@ export function normaliseContentId(value) {
  * store. The bytes come from the message payload (the backend already returns
  * `inline_images`, each with the Gmail attachment id it can be fetched by), and
  * are inlined as a data URL. Nothing outside the message is contacted, so an
- * embedded image is not a tracking risk and does not wait for the reader to
- * choose "Show images".
+ * embedded image is not a tracking risk and never depends on network access to
+ * the sender's server.
  *
  * @param {string} html
  * @param {Record<string, string>} inlineImages  content id (or attachment id) → data URL
@@ -323,9 +328,9 @@ function contentSecurityPolicy(allowRemote) {
  * @param {object} options
  * @param {string} options.html       raw HTML body from Gmail
  * @param {string} options.text       plain-text body from Gmail
- * @param {boolean} options.allowRemote  load remote images (user opted in)
+ * @param {boolean} options.allowRemote  load remote images (default: yes)
  */
-export function buildEmailDocument({ html = '', text = '', allowRemote = false, inlineImages = {} } = {}) {
+export function buildEmailDocument({ html = '', text = '', allowRemote = true, inlineImages = {} } = {}) {
   // Order matters: strip unsafe markup, resolve `cid:` to real bytes, then decide
   // what can actually be displayed in this pass.
   const cleaned = addLinkSafety(markUnavailableImages(

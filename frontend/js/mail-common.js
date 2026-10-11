@@ -23,7 +23,7 @@
 import { gmail, GmailError, isNotConfigured } from './lib/gmail.js';
 import {
   buildEmailDocument, dataUrlFromBase64, emailPlainText, formatBytes,
-  hasRemoteImages, normaliseContentId,
+  normaliseContentId,
 } from './lib/email-html.js';
 import {
   escapeHtml, icon, formatDate, formatListDate, refreshIcons, skeleton, emptyState, toast,
@@ -32,6 +32,12 @@ import {
 import { avatarMarkup, refreshAvatars } from './lib/avatar.js';
 import { listAction, readerAction } from './lib/shortcuts.js';
 import { navigate } from './app.js';
+import { isDesktop, openExternal } from './lib/runtime.js';
+
+// Where Gmail consent is completed when running as a desktop application. The
+// OAuth nonce cookie is HttpOnly and origin-scoped, so the flow has to finish on
+// the deployed origin — the desktop shell opens it in the user's real browser.
+const WEB_APP_ORIGIN = 'https://mrseedmail.vercel.app';
 
 const PAGE_SIZE = 25;
 
@@ -119,7 +125,7 @@ export function connectCard({ title = 'Connect your Gmail account', message = ''
   return `
     <div class="card setup-card">
       <div class="card-head"><h3>${icon('mail-plus', 16)} ${escapeHtml(title)}</h3></div>
-      <p>${escapeHtml(message || 'Seed Code Mail reads and sends mail through your own Gmail account using Google\'s official API. Your password is never shared, and Seed Code Mail never stores it.')}</p>
+      <p>${escapeHtml(message || 'Signing in proves who you are. Reading and sending mail is a separate step: it grants Seed Code Mail access to your own Gmail account through Google\'s official API. Your password is never requested or stored, and the grant can be revoked at any time.')}</p>
       <div class="notice">${icon('shield', 16)}<span>You will be sent to Google to approve access. Only these permissions are requested:
         read your mail, send mail, change read/unread state, and save drafts. Message contents are read on
         demand and are not copied into this application's database; the stored authorization is encrypted and
@@ -149,6 +155,15 @@ export function reauthCard(lastError) {
  * there is exactly one implementation of starting the flow.
  */
 export async function startConnect() {
+  // DESKTOP: Google's callback verifies an HttpOnly nonce cookie that the
+  // backend planted on the origin that *started* the flow. In the application
+  // window that origin is loopback, which Google's redirect never reaches, so
+  // consent is completed on the deployed site in the user's own browser. The
+  // connection is stored server-side and the desktop app simply reads its
+  // status afterwards.
+  if (isDesktop()) {
+    if (openExternal(`${WEB_APP_ORIGIN}/#/profile`)) return;
+  }
   const url = await gmail.connectUrl();
   // A full navigation, not a fetch: Google must set its own cookies on its own
   // origin, and the consent screen is not embeddable.
@@ -586,8 +601,11 @@ async function loadInlineImages(message) {
       });
       const dataUrl = await blobToDataUrl(blob, part.mime_type);
       return [part, dataUrl];
-    } catch (_) {
-      return null; // an unresolvable part leaves its placeholder, not a failure
+    } catch (error) {
+      // A diagnostic that names no message content: an embedded image that could
+      // not be fetched leaves its placeholder and the message still opens.
+      console.warn('[Seed Code Mail] inline image could not be loaded:', part.mime_type || 'image');
+      return null;
     }
   }));
 
@@ -649,8 +667,9 @@ function attachmentsBlock(attachments) {
  *
  * Rendered into the main content area — the sidebar, header and navigation stay
  * exactly where they are. The message body is shown in an `iframe sandbox=""`
- * with remote content blocked, so a message can neither run script nor report
- * that it was opened; "Show images" is an explicit, per-message choice.
+ * with remote images loaded automatically, so the message renders as it was
+ * designed; the sandbox and the document's CSP keep it inert and unable to
+ * reach this application or its session.
  *
  * Returns a cleanup function the router calls when leaving the route.
  */
@@ -664,8 +683,6 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
         <button class="btn btn-ghost btn-sm reader-back" id="reader-back">
           ${icon('arrow-left', 16)} Back to ${label}
         </button>
-        <div class="grow"></div>
-        <span class="reader-status cell-muted" id="reader-status" aria-live="polite"></span>
       </div>
       <div id="reader-shell">${skeleton(5)}</div>
     </div>`;
@@ -674,7 +691,6 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
   container.querySelector('#reader-back').addEventListener('click', () => navigate(mailbox));
 
   const shell = container.querySelector('#reader-shell');
-  const statusEl = container.querySelector('#reader-status');
   // The keyboard listener is registered once the message and its buttons exist,
   // so this starts as a no-op and the router's cleanup still works on every
   // early-return path below.
@@ -717,7 +733,6 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
   const isSent = mailbox === 'sent';
   const person = isSent ? first(message.to) : (message.from || { name: '', email: '' });
   const subject = message.subject || '(no subject)';
-  const remoteImages = hasRemoteImages(message.body?.html || '');
   const inlineImages = await loadInlineImages(message);
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
 
@@ -742,15 +757,12 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
       <div class="reader-actions">
         ${canSend ? `<button class="btn btn-secondary btn-sm" id="reader-reply">${icon('reply', 15)} Reply</button>
         <button class="btn btn-ghost btn-sm" id="reader-forward">${icon('forward', 15)} Forward</button>` : ''}
-        ${remoteImages ? `<button class="btn btn-ghost btn-sm" id="reader-images">${icon('image', 15)} Show images</button>` : ''}
         ${canModify ? `<button class="btn btn-ghost btn-sm" id="reader-read-toggle">
           ${icon(message.unread ? 'mail-open' : 'mail', 15)} ${message.unread ? 'Mark as read' : 'Mark as unread'}
         </button>
         <button class="btn btn-ghost btn-sm" id="reader-archive">${icon('archive', 15)} Archive</button>
         <button class="btn btn-ghost btn-sm danger" id="reader-delete">${icon('trash-2', 15)} Delete</button>` : ''}
       </div>
-
-      <div id="reader-banner"></div>
 
       <div class="reader-body">
         <!-- The sandbox token list omits allow-scripts, allow-forms,
@@ -765,11 +777,6 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
           referrerpolicy="no-referrer" title="Message content"></iframe>
       </div>
 
-      <details class="reader-plain">
-        <summary>Plain text</summary>
-        <pre>${escapeHtml(emailPlainText(message.body || {}))}</pre>
-      </details>
-
       ${attachmentsBlock(attachments)}
     </article>`;
 
@@ -778,35 +785,27 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
   refreshAvatars(shell);
 
   // --- body ------------------------------------------------------------------
+  //
+  // The message is shown as it was designed: the original HTML MIME part, with
+  // remote images loaded automatically and resolved inline (`cid:`) images in
+  // place. Security does not depend on a manual opt-in — the frame is `sandbox`ed
+  // without scripts, forms, same-origin or top-level navigation, and the document
+  // carries a strict CSP. The frame sends no referrer, so loading an image does
+  // not tell the sender where the message was opened from. References that cannot
+  // be resolved (an unresolved `cid:`, a relative URL) are still neutralised by
+  // buildEmailDocument, so a missing image never breaks the message layout.
 
   const frame = shell.querySelector('#reader-frame');
-  const banner = shell.querySelector('#reader-banner');
-  let allowRemote = false;
 
   const paintFrame = () => {
     frame.setAttribute('srcdoc', buildEmailDocument({
       html: message.body?.html || '',
       text: message.body?.text || '',
-      allowRemote,
       inlineImages,
     }));
   };
 
-  const paintBanner = () => {
-    if (!remoteImages || allowRemote) {
-      banner.innerHTML = '';
-      return;
-    }
-    banner.innerHTML = `
-      <div class="notice reader-image-notice">${icon('shield', 16)}<span>
-        Images in this message are stored on the sender's server, so they stay blocked until you
-        choose <strong>Show images</strong> — loading one would tell the sender that you opened the
-        message, and from where.</span></div>`;
-    refreshIcons(banner);
-  };
-
   paintFrame();
-  paintBanner();
 
   // Opening a message marks it read in Gmail — only when the account granted the
   // modify scope, and never for a message that is already read.
@@ -883,22 +882,6 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
       setBusy('#reader-delete', false);
       toast(error.message, 'error');
     }
-  });
-
-  shell.querySelector('#reader-images')?.addEventListener('click', async (event) => {
-    const ok = await confirmDialog(
-      'Load remote images from this message? The sender will be able to see that you opened it, along with your IP address.',
-      { title: 'Show remote images', confirmLabel: 'Show images' },
-    );
-    if (!ok) return;
-    allowRemote = true;
-    paintFrame();
-    paintBanner();
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.innerHTML = `${icon('image', 15)} Images shown`;
-    refreshIcons(button);
-    statusEl.textContent = 'Remote images loaded for this message.';
   });
 
   shell.querySelector('#reader-reply')?.addEventListener('click', () => {

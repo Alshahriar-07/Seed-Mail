@@ -24,6 +24,7 @@
 
 import { currentAccessToken } from './supabase.js';
 import { resolveServiceUrl } from './endpoints.js';
+import { isDesktop, desktopWorker } from './runtime.js';
 
 /** Used only by a locally served build (see lib/endpoints.js). */
 const LOCAL_WORKER_URL = 'http://127.0.0.1:8765';
@@ -38,6 +39,27 @@ let cached = null;
  */
 export function workerConfig() {
   if (cached) return cached;
+
+  // DESKTOP: the bundled worker is started by the Electron main process on a
+  // loopback port and handed to this page through the contextBridge. Its
+  // address is authoritative — `VITE_MAIL_WORKER_URL` is deliberately ignored
+  // here, so a desktop build never reaches for the remote service.
+  if (isDesktop()) {
+    const desktop = desktopWorker();
+    cached = {
+      configured: Boolean(desktop?.workerUrl),
+      local: false,
+      desktop: true,
+      url: desktop?.workerUrl || '',
+      source: desktop?.workerUrl ? 'desktop' : 'desktop-unavailable',
+      problem: desktop?.workerUrl
+        ? ''
+        : 'The bundled desktop send worker is not available yet. It starts with the application; if this persists, check the worker log from the application menu.',
+      staleLocalhost: false,
+    };
+    return cached;
+  }
+
   const resolved = resolveServiceUrl(import.meta.env.VITE_MAIL_WORKER_URL, {
     localDefault: LOCAL_WORKER_URL,
     label: 'send worker (VITE_MAIL_WORKER_URL)',
@@ -124,6 +146,14 @@ async function call(path, { method = 'GET', body, auth = true, timeout = TIMEOUT
     const token = await currentAccessToken();
     if (!token) throw new Error('You are not signed in.');
     headers.Authorization = `Bearer ${token}`;
+  }
+
+  // The desktop worker is created with a per-launch pairing token so another
+  // local process (or a page) cannot drive it. It is scoped to this launch and
+  // never rendered or stored.
+  if (isDesktop()) {
+    const desktop = desktopWorker();
+    if (desktop?.workerToken) headers['X-Seedmail-Agent-Token'] = desktop.workerToken;
   }
 
   const controller = new AbortController();

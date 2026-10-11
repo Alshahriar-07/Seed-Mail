@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seed Code Mail — Configuration</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: #0f1720; color: #e8eef5;
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    }
+    .card {
+      width: min(640px, 92vw); background: #16212e; border: 1px solid #26364a;
+      border-radius: 14px; padding: 32px; box-shadow: 0 24px 60px rgba(0,0,0,.4);
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { margin: 0 0 22px; color: #93a4b8; font-size: 14px; line-height: 1.5; }
+    label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+    input {
+      width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #2c3e54;
+      background: #0e1722; color: #e8eef5; font-size: 14px; font-family: inherit;
+    }
+    input:focus { outline: none; border-color: #3b82f6; }
+    .hint { font-size: 12px; color: #7b8da1; margin-top: 5px; line-height: 1.45; }
+    .row { display: flex; gap: 12px; margin-top: 24px; }
+    button {
+      flex: 1; padding: 11px 16px; border-radius: 8px; border: 1px solid transparent;
+      font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .primary { background: #2f6df6; color: #fff; }
+    .primary:disabled { opacity: .6; cursor: default; }
+    .ghost { background: transparent; border-color: #2c3e54; color: #cbd7e4; }
+    .error { margin-top: 16px; padding: 10px 12px; border-radius: 8px; background: #3a1d22; border: 1px solid #6b2b34; color: #ffb4c0; font-size: 13px; }
+    .note { margin-top: 18px; font-size: 12px; color: #7b8da1; line-height: 1.5; }
+    code { background: #0e1722; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Seed Code Mail — desktop setup</h1>
+    <p class="sub">
+      The desktop application reuses your deployed Vercel backend for the cloud API and
+      runs its own bundled SMTP worker on this computer. The worker needs your Supabase
+      project details, entered once here.
+    </p>
+
+    <form id="form">
+      <label for="url">Supabase project URL</label>
+      <input id="url" type="url" placeholder="https://your-project.supabase.co" autocomplete="off" />
+      <div class="hint">The same URL the web application uses (Settings → API → Project URL).</div>
+
+      <label for="publishable">Supabase publishable (anon) key</label>
+      <input id="publishable" type="text" placeholder="sb_publishable_…" autocomplete="off" />
+      <div class="hint">Public. Used by the worker to verify signed-in users.</div>
+
+      <label for="service">Supabase service-role key</label>
+      <input id="service" type="password" placeholder="Service role key (leave blank to keep the saved one)" autocomplete="off" />
+      <div class="hint">
+        Secret, and the reason this app cannot ship one: the worker needs it to claim your
+        queued campaigns. It is stored encrypted for your Windows account only.
+      </div>
+
+      <label for="origin">Cloud API origin</label>
+      <input id="origin" type="url" placeholder="https://mrseedmail.vercel.app" autocomplete="off" />
+      <div class="hint">The deployed site that serves <code>/api/gmail</code>. Change only for a beta deployment.</div>
+
+      <div class="row">
+        <button type="button" class="ghost" id="cancel">Cancel</button>
+        <button type="submit" class="primary" id="save">Save and start</button>
+      </div>
+      <div class="error" id="error" hidden></div>
+      <div class="note" id="note"></div>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById('form');
+    const errorBox = document.getElementById('error');
+    const note = document.getElementById('note');
+    const saveButton = document.getElementById('save');
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.hidden = !message;
+    }
+
+    window.seedmailSetup.load().then((data) => {
+      document.getElementById('url').value = data.supabaseUrl || '';
+      document.getElementById('publishable').value = data.supabasePublishableKey || '';
+      document.getElementById('origin').value = data.vercelOrigin || '';
+      if (data.supabaseServiceRoleKeySet) {
+        document.getElementById('service').placeholder = 'Saved — leave blank to keep it';
+      }
+      note.textContent =
+        (data.encryptionAvailable
+          ? 'Credentials are encrypted with the operating system credential store for this Windows account.'
+          : 'Warning: the OS credential store is unavailable, so credentials are stored unencrypted in this user profile.') +
+        ' Configuration file: ' + data.configPath;
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showError('');
+      saveButton.disabled = true;
+      saveButton.textContent = 'Starting…';
+      try {
+        const result = await window.seedmailSetup.save({
+          supabaseUrl: document.getElementById('url').value,
+          supabasePublishableKey: document.getElementById('publishable').value,
+          supabaseServiceRoleKey: document.getElementById('service').value,
+          vercelOrigin: document.getElementById('origin').value,
+        });
+        if (!result || result.ok !== true) {
+          showError((result && result.error) || 'Could not start the application.');
+          saveButton.disabled = false;
+          saveButton.textContent = 'Save and start';
+        }
+      } catch (error) {
+        showError(String(error && error.message ? error.message : error));
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save and start';
+      }
+    });
+
+    document.getElementById('cancel').addEventListener('click', () => window.seedmailSetup.cancel());
+  </script>
+</body>
+</html>

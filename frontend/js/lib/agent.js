@@ -31,6 +31,8 @@
 // This module simply complies: it never sends a user id, and it never sends a
 // credential other than the caller's own Supabase token.
 
+import { isDesktop, desktopWorker } from './runtime.js';
+
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:8765';
 const PROBE_TIMEOUT_MS = 4000;
 const CALL_TIMEOUT_MS = 10000;
@@ -56,6 +58,13 @@ function env() {
  * panel unable to look for an agent at all.
  */
 export function localAgentUrl(rawValue) {
+  // In the desktop application the "local agent" is the worker the app itself
+  // started. The bridge address wins, so the Settings panel describes the real
+  // process instead of probing the default port of a separately installed one.
+  if (isDesktop() && rawValue === undefined) {
+    const desktop = desktopWorker();
+    if (desktop?.workerUrl) return desktop.workerUrl;
+  }
   const raw = String(rawValue ?? env().VITE_LOCAL_AGENT_URL ?? '').trim();
   if (!raw) return DEFAULT_AGENT_URL;
   try {
@@ -217,8 +226,11 @@ export function describeAgent({
 async function request(path, { method = 'GET', body, token = '', accessToken = '', timeout = CALL_TIMEOUT_MS } = {}) {
   const url = `${localAgentUrl()}${path}`;
   const headers = { Accept: 'application/json' };
-  // Always sent: the agent ignores it unless pairing is switched on.
-  const pairing = token || agentPairingToken();
+  // Always sent: the agent ignores it unless pairing is switched on. In the
+  // desktop application the pairing token is the per-launch one the shell
+  // generated, taken from the bridge rather than local storage.
+  const desktop = isDesktop() ? desktopWorker() : null;
+  const pairing = desktop?.workerToken || token || agentPairingToken();
   if (pairing) headers['X-Seedmail-Agent-Token'] = pairing;
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';

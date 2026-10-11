@@ -289,10 +289,17 @@
 .view.view-reader {
   display: flex;
   flex-direction: column;
+  /* The message uses the whole workspace next to the sidebar. The shared
+     `.view` rule centres its content in a 1280px column, which is right for a
+     table or a form and wrong for a message: it left the email in a narrow
+     centred box. The reader lifts that constraint so the body is displayed at
+     its original width instead of being clipped or shrunk. */
+  max-width: none;
+  margin-inline: 0;
   /* The topbar is sticky and `--topbar-h` tall, so this makes the reading view
      exactly fill the rest of the window without the page itself scrolling. */
   min-height: calc(100vh - var(--topbar-h));
-  padding-bottom: 24px;
+  padding: var(--space-5) var(--space-6) 24px;
 }
 
 .reader-view {
@@ -310,7 +317,6 @@
 }
 
 .reader-back .ui-icon { margin-right: 2px; }
-.reader-status { font-size: 12px; }
 
 .reader-card {
   flex: 1;
@@ -393,10 +399,6 @@
   flex-shrink: 0;
 }
 
-#reader-banner { padding: 0 22px; }
-#reader-banner:empty { display: none; }
-.reader-image-notice { margin: 14px 0 0; font-size: 12.5px; }
-
 .reader-body {
   flex: 1;
   min-height: 280px;
@@ -413,27 +415,6 @@
   min-height: 0;
   border: 0;
   background: var(--white);
-}
-
-.reader-plain { padding: 10px 22px 4px; font-size: 13px; }
-
-.reader-plain summary {
-  cursor: pointer;
-  color: var(--muted);
-}
-
-.reader-plain pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--page-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  margin: 10px 0 0;
-  max-height: 320px;
-  overflow: auto;
 }
 
 .reader-error-actions { margin-top: 12px; }
@@ -460,6 +441,7 @@
     min-height: calc(100dvh - var(--topbar-h));
     padding: 0;
     max-width: none;
+    margin-inline: 0;
   }
   .reader-view { gap: 0; }
   .reader-toolbar {
@@ -475,9 +457,7 @@
   .reader-head { padding: 14px 14px 12px; gap: 10px; }
   .reader-subject { font-size: 17px; }
   .reader-actions { padding: 10px 14px; }
-  #reader-banner { padding: 0 14px; }
   .reader-body { min-height: 200px; }
-  .reader-plain { padding: 10px 14px 4px; }
   .reader-attachments { padding: 12px 14px 18px; }
 }
 

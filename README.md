@@ -225,6 +225,30 @@ curl -s https://your-worker-host/api/worker/health | python -m json.tool
 There is no default email subject. The subject belongs to each campaign and is
 required when the campaign is created.
 
+### 3.4 Creating a Gmail App Password (in-app help)
+
+The Settings page has a **“How to create a Gmail App Password”** button beside
+the App Password field. It opens a help panel covering what an App Password is,
+the account requirements (2-Step Verification), the exact steps, the SMTP values
+Seed Code Mail uses, and how to read the common authentication failures. It links
+directly to the official page, <https://myaccount.google.com/apppasswords>.
+
+* A Gmail App Password is a 16-character password Google generates for one app
+  when 2-Step Verification is on. It is used by the SMTP sender only — it does
+  **not** grant Gmail API access, and it is not a substitute for the OAuth
+  connection in §5.
+* Availability depends on the account: work, school and Advanced Protection
+  accounts often cannot create App Passwords at all. Those accounts should use
+  the Gmail API connection on the Profile page instead.
+* The App Password is written only to the send worker (or the Local Agent),
+  never to Supabase and never to browser storage. It is never returned to the
+  browser. See §10a, Security requirements.
+
+SMTP values: host `smtp.gmail.com`, port `465` (SSL) or `587` (STARTTLS),
+username = the sender Gmail address, password = the App Password. The **Test SMTP
+connection** button in Settings reports the authentication result without
+echoing the credential.
+
 ---
 
 ## 4. Supabase setup
@@ -267,6 +291,27 @@ Email/password sign-up must be enabled. If email confirmation is on
 (recommended), confirmation links point at the current origin, so every deployed
 origin must be listed.
 
+### 4.2a Google sign-in provider (dashboard)
+
+Supabase → **Authentication → Providers → Google** → enable it and paste the
+**Client ID** and **Client Secret** from the same Google Cloud *Web application*
+OAuth client used in §5.1 (one client can serve both). Supabase displays a
+**Callback URL** of the form
+`https://<project-ref>.supabase.co/auth/v1/callback`; add that URL to the Google
+Cloud client's **Authorised redirect URIs** as well.
+
+The provider needs **no Gmail scopes** for sign-in. It is used only to
+authenticate the account; Gmail access is the separate consent in §5, which is
+what keeps the Gmail refresh token out of the browser session.
+
+Leave automatic identity linking **off** (Supabase → Authentication →
+Providers). Seed Code Mail does not link a Google identity to an existing
+password account from an unverified email: a returning user is matched by the
+trusted Google identity Supabase returns, and a password account is never
+silently merged. A user who signed up with email/password can still use
+“Continue with Google” once the two are deliberately linked, and a Google-first
+user can later add a password through the normal reset flow.
+
 ### 4.3 Tables
 
 | Table | Purpose |
@@ -292,6 +337,13 @@ The mailbox uses Google's **official Gmail API**, not SMTP. An App Password does
 **not** grant Gmail API access, and no credentials are fabricated: until the
 values in §3.2 exist, the app shows a setup card naming the missing variables and
 stays inert.
+
+**Two grants, one onboarding.** Signing in with Google (§4.2a) and granting Gmail
+access are different permission grants. Sign-in authenticates the account; the
+flow below is a separate consent that authorises the mailbox. Seed Code Mail runs
+them back to back — a signed-in user with no Gmail connection is shown the
+**Connect your Gmail account** card immediately (Inbox and Profile) — and it
+never treats a Google sign-in token as a Gmail credential.
 
 ### 5.1 Google Cloud Console (manual, one-off)
 
@@ -342,7 +394,14 @@ Not requested: `gmail.labels`, `gmail.settings.*`, and the all-or-nothing
    reports `invalid_grant`.
 
 The refresh token is never sent to the browser, never placed in a URL, and never
-returned by an API response.
+returned by an API response. It is stored in `gmail_connections`, a table the
+`authenticated` role cannot read or write at all (RLS enabled and forced, no
+policy), encrypted with AES-256-GCM under `GMAIL_TOKEN_ENCRYPTION_KEY`.
+
+A valid connection is **reused on every return visit**: the app restores the
+Supabase session and reads `/api/gmail/status`, and only asks for consent again
+when the connection is missing, was revoked (`invalid_grant`), failed to decrypt
+under the current key, or lacks a scope a feature needs.
 
 ---
 
@@ -380,10 +439,24 @@ and is labelled queued / processing / submitted / failed / unknown.
 
 ### Rendering untrusted email safely
 Message HTML is never injected into the application DOM. It is rendered in an
-`<iframe sandbox="">` — which blocks scripts, forms, popups and same-origin
-access — with a strict CSP inside the document. **Remote images are blocked until
-the user chooses "Show images"**, because a single tracking pixel reveals that a
-message was opened and from where.
+`<iframe sandbox="allow-popups allow-popups-to-escape-sandbox">` — which blocks
+scripts, forms, same-origin access and top-level navigation — with a strict CSP
+inside the document (`script-src 'none'`, `form-action 'none'`, `base-uri
+'none'`). Before it reaches the frame the HTML is sanitised: `<script>`,
+`<iframe>`, `<object>`, `<embed>`, `<base>` and `<form>` elements are removed,
+inline `on*` handlers are stripped, and `javascript:` / `vbscript:` /
+`data:text/html` URLs are dropped.
+
+The **original HTML MIME part is the primary body**; the plain-text part is used
+only when there is no HTML (it is still kept internally for reply/forward quoting
+even though it is no longer shown as a “Plain text” section). Inline (`cid:`)
+images are resolved to `data:` URLs from the message payload, and **remote images
+load automatically** so the message renders as it was designed. The frame sends
+`Referer: no-referrer` (frame attribute and document meta), so an image fetch
+does not disclose which application page opened the message. An image that cannot
+be resolved (an unresolved `cid:`, or a relative URL with no meaning outside the
+sender's server) becomes an explained, correctly-sized placeholder rather than a
+broken-image icon, so it never collapses the message layout.
 
 ### Drafts and history
 Drafts are saved with Gmail's `drafts.create`, so they appear in Gmail itself

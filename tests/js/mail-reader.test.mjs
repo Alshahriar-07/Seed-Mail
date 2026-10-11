@@ -84,12 +84,23 @@ test('the message body keeps every security boundary while being shown full widt
   assert.match(MAIL_COMMON, /referrerpolicy="no-referrer"/);
 });
 
-test('remote images stay opt-in and the reason is explained', () => {
-  assert.match(MAIL_COMMON, /let allowRemote = false/, 'remote content starts blocked');
-  assert.match(MAIL_COMMON, /id="reader-images"/, 'there is an explicit way to allow it');
-  assert.match(MAIL_COMMON, /hasRemoteImages\(/, 'the control is only offered when it would do something');
-  assert.match(MAIL_COMMON, /sender will be able to see that you opened it/,
-    'the confirmation says what loading remote content reveals');
+test('remote images load automatically and the manual Show images control is gone', () => {
+  // The product decision changed: a message is shown as it was designed, so
+  // remote images load without a manual opt-in. The security boundary is the
+  // sandbox and the document CSP, not the button (see email-html.test.mjs).
+  assert.ok(!/id="reader-images"/.test(MAIL_COMMON), 'the Show images button must be removed');
+  assert.ok(!/Show images/.test(MAIL_COMMON), 'no copy may refer to a Show images button');
+  assert.ok(!/let allowRemote/.test(MAIL_COMMON), 'there is no per-message opt-in state');
+  assert.match(MAIL_COMMON, /buildEmailDocument\(\{/, 'the body is still built by the sanitising document builder');
+  assert.match(MAIL_COMMON, /referrerpolicy="no-referrer"/, 'the frame still sends no referrer');
+});
+
+test('the visible Plain text section is removed while plain text is kept internally', () => {
+  assert.ok(!/class="reader-plain"/.test(MAIL_COMMON), 'the Plain text expandable section must be removed');
+  assert.ok(!/reader-plain/.test(MAIL_CSS), 'and its styles must not remain');
+  // The plain-text body is still used internally for reply/forward quoting and
+  // as the fallback when a message has no HTML part.
+  assert.match(MAIL_COMMON, /emailPlainText\(message\.body \|\| \{\}\)/);
 });
 
 test('destructive actions are gated on the scope that can actually perform them', () => {
@@ -104,6 +115,8 @@ test('destructive actions are gated on the scope that can actually perform them'
 test('the reading view fills the main area and is full-screen on mobile', () => {
   assert.match(MAIL_CSS, /\.view\.view-reader\s*\{[^}]*min-height: calc\(100vh - var\(--topbar-h\)\)/s,
     'the reader must occupy the available height rather than a fixed 52vh box');
+  assert.match(MAIL_CSS, /\.view\.view-reader\s*\{[^}]*max-width: none/s,
+    'the reader must lift the shared content max-width so the message uses the workspace');
   assert.match(MAIL_CSS, /\.reader-frame\s*\{[^}]*flex: 1/s, 'the frame fills the space it is given');
   assert.match(MAIL_CSS, /@media \(max-width: 900px\)\s*\{[\s\S]*?\.view\.view-reader\s*\{[^}]*min-height: calc\(100dvh - var\(--topbar-h\)\)/,
     'on mobile the message is the whole screen');
