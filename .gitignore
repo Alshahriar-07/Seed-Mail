@@ -4,7 +4,9 @@ frontend/.env
 frontend/.env.local
 frontend/.env.*.local
 *.pem
-
+.env
+.env.*
+!.env.example
 # Node / Vite build
 node_modules/
 dist/
@@ -50,3 +52,7 @@ Thumbs.db
 .*.tmp
 *.corrupt
 start.bat
+
+.vercel
+.env*
+desktop/

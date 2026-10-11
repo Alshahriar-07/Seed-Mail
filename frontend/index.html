@@ -76,6 +76,17 @@
        that lets a keyboard user bypass the sidebar navigation). js/app.js
        reveals it when a session exists, so it is never a dead link on the
        public landing view. -->
+  <!-- Boot splash (the "loading page"). It is present in the served HTML, so it
+       paints immediately — before the module bundle has downloaded or Supabase
+       has answered — and js/app.js removes it the moment a real view (sign-in,
+       the app shell, or a public legal page) is on screen. Without it a slow
+       connection shows a blank white page, which looks like a crash. It is a
+       status region so a screen reader announces the wait. -->
+  <div class="app-boot" id="app-boot" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <span class="app-boot-text">Loading Seed Code Mail…</span>
+  </div>
+
   <a class="skip-link" id="skip-link" href="#main-content" hidden>Skip to content</a>
 
   <!-- Signed-out view. This markup is served as static HTML so search engines

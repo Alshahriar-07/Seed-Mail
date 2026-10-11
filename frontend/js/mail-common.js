@@ -684,7 +684,7 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
           ${icon('arrow-left', 16)} Back to ${label}
         </button>
       </div>
-      <div id="reader-shell">${skeleton(5)}</div>
+      <div class="reader-shell" id="reader-shell">${skeleton(5)}</div>
     </div>`;
 
   refreshIcons(container);

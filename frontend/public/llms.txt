@@ -1,0 +1,37 @@
+# Seed Code Mail
+
+> Seed Code Mail is a Gmail-connected email workspace and personalised campaign
+> manager. It reads your real Gmail Inbox and Sent mail, composes and sends
+> ordinary email from your own Google account, and lets you manage recipients,
+> HTML templates and campaigns with live progress and a complete submission
+> history.
+
+- Production: https://mrseedmail.vercel.app/
+- Source: https://github.com/Alshahriar-07/Seed-Mail
+- Licence: MIT (see LICENSE)
+
+## What it is
+
+- A web application (Vite frontend, Supabase Auth + Postgres, Vercel serverless
+  functions) that is also shipped as a Windows desktop application.
+- Ordinary mail (Inbox, Compose, Sent, search, attachments) uses the official
+  **Gmail API** with OAuth 2.0 through the app's own backend. No password is
+  handled by the browser.
+- Campaign delivery uses **SMTP** with a Gmail App Password, performed by a
+  long-running send worker. In the desktop application that worker is bundled
+  and started automatically; on the web it is a separately deployed service.
+- Data is isolated per user with Supabase Row Level Security.
+
+## Key pages
+
+- `#/inbox`, `#/compose`, `#/sent` — the mailbox
+- `#/recipients`, `#/campaigns`, `#/templates`, `#/editor`, `#/history`
+- `#/profile`, `#/settings`, `#/about`
+- `/privacy`, `/terms` — public legal pages
+
+## What it is not
+
+- It is not a bulk-email or spam tool. Google's sending limits are respected,
+  not evaded.
+- It does not fabricate avatars or credentials. Sender avatars are initials,
+  because Gmail's API exposes a name and an address, not a profile photo.

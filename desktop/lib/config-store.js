@@ -110,7 +110,15 @@ function loadConfig() {
   }
 
   let payload = parsed;
-  if (parsed && parsed.encrypted) {
+  if (parsed && parsed.encrypted === false && typeof parsed.data === 'string') {
+    // A plaintext record written when no OS backend was available: the config is
+    // carried as a JSON string in `data`.
+    try {
+      payload = JSON.parse(parsed.data);
+    } catch (_) {
+      return normalise({});
+    }
+  } else if (parsed && parsed.encrypted) {
     try {
       const decrypted = safeStorage.decryptString(Buffer.from(String(parsed.data || ''), 'base64'));
       payload = JSON.parse(decrypted);

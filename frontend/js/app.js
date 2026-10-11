@@ -93,6 +93,21 @@ export function getAuthView() {
 function setAuthView(next) {
   authView = next;
   document.body.dataset.authState = next;
+  // Any real view supersedes the boot splash: it has done its job once the app
+  // knows whether to show the sign-in screen, the shell, or an error.
+  dismissBootLoader();
+}
+
+/**
+ * Removes the server-rendered boot splash (the loading page).
+ *
+ * Idempotent and safe to call for every view state, so no code path has to
+ * remember to clear it — a forgotten call would leave the user staring at a
+ * spinner over a working application.
+ */
+function dismissBootLoader() {
+  const boot = document.getElementById('app-boot');
+  if (boot && !boot.hidden) boot.hidden = true;
 }
 
 // --- Unsaved-changes guard -------------------------------------------------
@@ -211,7 +226,46 @@ function renderLegalIfRequested() {
   const slug = legal.legalSlugFromLocation();
   if (!slug) return false;
   showLegalPage(slug);
+  // A public legal document is a real view; the boot splash must not cover it.
+  dismissBootLoader();
   return true;
+}
+
+/**
+ * 404 — an unknown route inside the signed-in application.
+ *
+ * The router used to silently bounce an unknown route to the dashboard, which
+ * hid broken links and typos: a mistyped address looked like a working page
+ * that had ignored the request. It now says what happened, keeps the sidebar so
+ * the user can go anywhere from here, and marks the document `noindex` so a
+ * crawler never caches a not-found state as if it were content.
+ */
+function renderNotFound(name) {
+  if (typeof cleanup === 'function') { try { cleanup(); } catch (_) { /* ignore */ } cleanup = null; }
+  view.innerHTML = '';
+  nav.querySelectorAll('.nav-item').forEach((item) => {
+    item.classList.remove('active');
+    item.removeAttribute('aria-current');
+  });
+  titleEl.textContent = 'Page not found';
+  document.title = 'Page not found · Seed Code Mail';
+  setIndexable(false);
+
+  const attempted = String(name || '').trim();
+  view.innerHTML = `
+    <div class="empty-state" role="alert">
+      <div class="empty-icon">${icon('compass', 30)}</div>
+      <h2>404 — page not found</h2>
+      <p>${attempted
+        ? `There is nothing at <code>#/${escapeHtml(attempted)}</code>.`
+        : 'That page does not exist.'}
+        The link may be out of date, or the address may have been mistyped.</p>
+      <div class="page-actions" style="justify-content:center;margin-top:12px;">
+        <button class="btn btn-primary" id="notfound-home" type="button">${icon('arrow-left', 16)} Back to Dashboard</button>
+      </div>
+    </div>`;
+  refreshIcons(view);
+  view.querySelector('#notfound-home')?.addEventListener('click', () => { navigate(DEFAULT_ROUTE); });
 }
 
 const AUTH_TITLES = {
@@ -402,8 +456,10 @@ async function renderAppRoute() {
   const hash = location.hash.replace(/^#\/?/, '') || DEFAULT_ROUTE;
   const [name, ...params] = hash.split('/');
   if (!PRIVATE_ROUTES.includes(name)) {
-    guardSuppressed = true;
-    location.hash = `#/${DEFAULT_ROUTE}`;
+    // An unknown route is a 404, not a silent redirect to the dashboard. See
+    // renderNotFound(): hiding a broken link behind the default page made a
+    // typo look like a working page that ignored the request.
+    renderNotFound(name);
     return;
   }
   const route = routes[name];

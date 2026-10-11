@@ -318,6 +318,20 @@
 
 .reader-back .ui-icon { margin-right: 2px; }
 
+/* The shell between the toolbar and the card has to be a flex track too.
+
+   Without this the chain stops here: `.reader-view` stretched to the viewport,
+   but `#reader-shell` was a plain block, so the card sized itself from its
+   content (a ~280px body plus attachments) and every pixel below it was an
+   unexplained blank area. Making the shell a growing flex column lets the card
+   own the remaining height and the message body fill it. */
+.reader-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .reader-card {
   flex: 1;
   min-height: 0;

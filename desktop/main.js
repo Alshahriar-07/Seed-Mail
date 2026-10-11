@@ -124,6 +124,10 @@ function hardenWindow(win, pageOrigin) {
  * the UI reports the worker as unavailable rather than pretending otherwise.
  */
 async function startRuntime(win) {
+  if (!win || win.isDestroyed()) {
+    win = createWindow({ setup: false });
+    mainWindow = win;
+  }
   const workerToken = crypto.randomBytes(24).toString('base64url');
   const workerPort = await getFreePort();
   const pagePort = await getFreePort();

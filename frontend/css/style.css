@@ -323,6 +323,30 @@ input, select, textarea { font-family: inherit; }
 .profile-name { font-weight: 600; font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .profile-email { font-size: var(--text-2xs); color: var(--text-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* --- Boot splash / loading page ------------------------------------------- */
+
+/* Covers the page until the application module has chosen a view. `position:
+   fixed` so it overlays whatever is painted underneath, and a solid background
+   so no half-styled markup flashes through. js/app.js hides it by setting the
+   `hidden` attribute, which the `[hidden]` rule enforces over `display: flex`. */
+.app-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+.app-boot[hidden] { display: none; }
+
+.app-boot-text { letter-spacing: -0.01em; }
+
 /* --- View ------------------------------------------------------------------ */
 
 .view {

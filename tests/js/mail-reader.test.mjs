@@ -122,6 +122,14 @@ test('the reading view fills the main area and is full-screen on mobile', () => 
     'on mobile the message is the whole screen');
   assert.match(MAIL_COMMON, /container\.classList\.add\('view-reader'\)/);
   assert.match(MAIL_COMMON, /classList\.remove\('view-reader'\)/, 'and the class is cleaned up on leaving');
+
+  // The blank area below the message was a missing link in the flex chain: the
+  // shell between the toolbar and the card has to grow too, or the card sizes
+  // from its content and leaves the rest of the viewport empty.
+  assert.match(MAIL_COMMON, /class="reader-shell" id="reader-shell"/,
+    'the reader shell wraps the card and carries a class');
+  assert.match(MAIL_CSS, /\.reader-shell\s*\{[^}]*flex: 1/s, 'the shell must fill the reader column');
+  assert.match(MAIL_CSS, /\.reader-shell\s*\{[^}]*min-height: 0/s, 'and may shrink so the frame can scroll');
 });
 
 test('the account avatar uses the signed-in user, not a hardcoded one', () => {
