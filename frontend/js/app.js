@@ -3,11 +3,12 @@
 import { api } from './api.js';
 import { refreshIcons, escapeHtml, confirmDialog, toast, icon } from './ui.js';
 import { supabaseConfigured } from './lib/supabase.js';
+import { canonicalRedirectFor } from './lib/endpoints.js';
 import { requestPersistence } from './lib/templates-store.js';
 import {
   bootstrapAuth, onAuthChange, renderAuth, normaliseAuthRoute,
   currentUser, displayName, signOut, isRecoveryPending, avatarUrl,
-  renderAuthLoading, renderAuthInitFailure,
+  renderAuthLoading, renderAuthInitFailure, installDesktopAuthCallback,
 } from './auth.js';
 import { avatarInner, refreshAvatars, safeImageUrl } from './lib/avatar.js';
 import { agentReport } from './lib/agent.js';
@@ -266,6 +267,60 @@ function renderNotFound(name) {
     </div>`;
   refreshIcons(view);
   view.querySelector('#notfound-home')?.addEventListener('click', () => { navigate(DEFAULT_ROUTE); });
+}
+
+// --- canonical origin ------------------------------------------------------
+//
+// Every `*.vercel.app` deployment hostname can sit behind Vercel Deployment
+// Protection, and the team-scoped project URL (`seedmail-<team>.vercel.app`) is
+// one of them. If Google is asked to return to such a host, Vercel's own
+// authentication wall answers the redirect instead of this application: the
+// authorisation `code` never reaches the SPA, so the account is created in
+// Supabase while no session is ever established and the user is left on Vercel's
+// login page. That is the reported "signed in at Google but not in the app"
+// state, and the redirect must not be built from a deployment hostname in the
+// first place.
+//
+// So the origin is canonicalised BEFORE any authentication begins, which keeps
+// the PKCE code verifier and the callback on the same canonical origin (a
+// cross-origin redirectTo would break the exchange), and keeps the whole flow on
+// the public production domain. See lib/endpoints.js for the rules.
+
+const CANONICAL_ONCE_KEY = 'seedmail.canonicalised';
+
+function canonicaliseOrigin() {
+  const target = canonicalRedirectFor({
+    configured: import.meta.env.VITE_SITE_URL,
+    hostname: location.hostname,
+    pathname: location.pathname,
+    hash: location.hash,
+  });
+  if (!target) return false;
+
+  let alreadyAttempted = false;
+  try {
+    alreadyAttempted = sessionStorage.getItem(CANONICAL_ONCE_KEY) === '1';
+  } catch (_) {
+    // Storage can be unavailable (private mode, blocked cookies). One attempt is
+    // still made; without the flag a repeat is possible, which is why the target
+    // check above is the real loop guard.
+  }
+  if (alreadyAttempted) {
+    // One attempt only. Still being on a deployment hostname means the canonical
+    // origin did not load (unreachable, or protected as well); redirecting again
+    // would be an infinite loop, so the application stays where it is and the
+    // condition is reported instead of hidden.
+    console.error(
+      '[Seed Code Mail] this page is served from a Vercel deployment hostname and the canonical ' +
+        'origin did not load. Set VITE_SITE_URL (and the Supabase Site URL) to the production domain.',
+    );
+    return false;
+  }
+  try {
+    sessionStorage.setItem(CANONICAL_ONCE_KEY, '1');
+  } catch (_) { /* the redirect does not depend on the flag being stored */ }
+  location.replace(target);
+  return true;
 }
 
 const AUTH_TITLES = {
@@ -674,6 +729,16 @@ async function handleAuthEvent(event) {
     await renderAuthRoute();
     return;
   }
+  if (event === 'AUTH_ERROR') {
+    // A Google sign-in that came back without a usable session. Re-rendering the
+    // sign-in screen is what surfaces the reason (see auth.js →
+    // desktopAuthErrorMessage / callbackErrorMessage), so the failure is never
+    // silent and never presented as a successful login.
+    if (currentUser()) return;
+    setAuthView(AUTH_VIEW.unauthenticated);
+    await renderAuthRoute();
+    return;
+  }
   if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
     // The initial event can arrive while the explicit restore attempt is still
     // running; that attempt owns the outcome, so a stale session cannot
@@ -712,12 +777,23 @@ async function retrySessionRestore() {
 
 async function boot() {
   refreshIcons(document);
+
+  // Move to the canonical origin before anything authentication-related runs.
+  // The document is being replaced, so booting stops here.
+  if (canonicaliseOrigin()) return;
+
   // Restore the saved sidebar preference before the shell is ever revealed.
   applySidebarCollapsed(readSidebarPreference(), { persist: false });
   closeSidebar();
 
   // Subscribe before restoring, so no auth event can be lost.
   onAuthChange(handleAuthEvent);
+
+  // Desktop only: a Google sign-in completed in the system browser returns its
+  // authorisation code on one loopback request. The listener is installed once,
+  // before any sign-in can be started, so a code that arrives while the page is
+  // idle is still exchanged exactly once.
+  installDesktopAuthCallback();
 
   if (!supabaseConfigured) {
     await renderConfiguration();

@@ -20,7 +20,8 @@ import {
 } from './ui.js';
 import { navigate } from './app.js';
 import { takeComposePrefill, bindConnect, reauthCard, serverSetupCard, connectCard } from './mail-common.js';
-import { displayName } from './auth.js';
+import { avatarMarkup, avatarSource, refreshAvatars } from './lib/avatar.js';
+import { avatarUrl, currentUser, displayName } from './auth.js';
 
 const MAX_ATTACHMENTS = 3;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -97,14 +98,27 @@ export async function render(container) {
     return;
   }
 
+  // The sender identity is shown with the account's own picture (when the
+  // account has one) rather than a generic icon: it is the one identity in the
+  // application whose photo is genuinely known. See lib/avatar.js.
+  const accountUser = currentUser() || {};
   statusEl.innerHTML = `
     <div class="mailbox-strip">
+      ${avatarMarkup({ name: displayName(), email: connection.email }, {
+        size: 30,
+        kind: 'account',
+        src: avatarSource({ email: connection.email }, {
+          accountEmail: accountUser.email,
+          accountSrc: avatarUrl(),
+        }),
+      })}
       <span class="status-led is-ok"></span>
       <span>Sending as <strong>${escapeHtml(connection.email)}</strong></span>
       <div class="grow"></div>
       <button class="btn btn-ghost btn-sm" id="compose-manage">${icon('user-cog', 15)} Manage connection</button>
     </div>`;
   refreshIcons(statusEl);
+  refreshAvatars(statusEl);
   statusEl.querySelector('#compose-manage').addEventListener('click', () => navigate('profile'));
 
   const prefill = takeComposePrefill() || {};

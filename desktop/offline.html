@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seed Code Mail — connection problem</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: #f8f8f6; color: #1a1a19;
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    }
+    .card {
+      width: min(520px, 92vw); background: #fff; border: 1px solid #e4e4df;
+      border-radius: 14px; padding: 32px; box-shadow: 0 1px 1px rgba(26,26,25,.04), 0 8px 20px -4px rgba(26,26,25,.09);
+    }
+    .mark { width: 44px; height: 44px; border-radius: 10px; background: #101010; color: #fff; display: grid; place-items: center; margin-bottom: 18px; }
+    h1 { margin: 0 0 8px; font-size: 20px; letter-spacing: -0.02em; }
+    p { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: #5c5c57; }
+    .origin { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: #454542; }
+    .reason { font-size: 12.5px; color: #6a6a64; }
+    button {
+      margin-top: 10px; padding: 11px 18px; border-radius: 8px; border: 1px solid transparent;
+      background: #101010; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { background: #2c2c2a; }
+    button:focus-visible { outline: 2px solid #0F766E; outline-offset: 2px; }
+    .ghost { background: transparent; border-color: #e4e4df; color: #454542; margin-left: 8px; }
+    .ghost:hover { background: #f2f2ef; color: #1a1a19; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h.01" /><path d="M5 12.859a10 10 0 0 1 14 0" />
+        <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+      </svg>
+    </div>
+    <h1>Cannot reach Seed Code Mail</h1>
+    <p>
+      The desktop application loads the deployed service, so it needs an internet
+      connection. Nothing on this computer was changed.
+    </p>
+    <p class="origin" id="origin">https://mrseedmail.vercel.app</p>
+    <p class="reason" id="reason"></p>
+    <button id="retry" type="button">Try again</button>
+    <button class="ghost" id="browser" type="button">Open in browser</button>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const origin = params.get('origin') || 'https://mrseedmail.vercel.app';
+    const reason = params.get('reason') || '';
+    document.getElementById('origin').textContent = origin;
+    if (reason) {
+      // A short, non-sensitive description of the failure. No URL parameters from
+      // the failing request are shown, and no error object is rendered.
+      document.getElementById('reason').textContent = 'Details: ' + reason;
+    }
+    // Navigating to the trusted application origin is allowed by the shell's
+    // navigation policy, so the retry is an ordinary navigation.
+    document.getElementById('retry').addEventListener('click', () => { location.replace(origin + '/'); });
+    document.getElementById('browser').addEventListener('click', () => { location.replace(origin + '/'); });
+  </script>
+</body>
+</html>

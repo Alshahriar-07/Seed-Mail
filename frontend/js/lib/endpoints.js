@@ -27,6 +27,10 @@
 //     short, actionable reason. Callers surface the reason; they never invent a
 //     host and never pretend a service is reachable.
 //
+// It also answers a third question — "which origin is this application
+// actually served from?" — because that decides whether an OAuth redirect can
+// come back to it at all. See canonicalRedirectFor below.
+//
 // `hostname` is injectable so the rules can be unit-tested without a browser.
 
 /** Loopback / "this machine" hostnames. */
@@ -43,6 +47,84 @@ export function isLoopbackHostname(hostname) {
 /** True when the page itself is being served from this machine. */
 export function pageIsLocal(hostname = typeof location !== 'undefined' ? location.hostname : '') {
   return isLoopbackHostname(hostname);
+}
+
+// --- canonical origin -------------------------------------------------------
+
+/**
+ * The application's canonical production origin.
+ *
+ * A `Vercel` *deployment hostname* is not a safe place to complete a login. Every
+ * `*.vercel.app` deployment — a preview URL, or the team-scoped project URL such
+ * as `seedmail-<team>.vercel.app` — can sit behind Vercel Deployment Protection,
+ * and an OAuth redirect that lands there is then answered by Vercel's own
+ * authentication wall instead of this application. The authorisation `code` never
+ * reaches the SPA, so the account is created in Supabase while no session is ever
+ * established: the reported "Google says yes, the app says signed out" state,
+ * with the browser left on a Vercel login page.
+ *
+ * `VITE_SITE_URL` overrides it (the value the README documents). The fallback is
+ * the same production domain this project already hardcodes in its public files
+ * (sitemap, robots.txt, canonical link, the desktop shell).
+ */
+export const DEFAULT_CANONICAL_ORIGIN = 'https://mrseedmail.vercel.app';
+
+/** Parses an absolute https URL, or returns null when the value is unusable. */
+function parseHttpsOrigin(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' ? url : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Decide whether this page should move to the canonical origin before it does any
+ * authentication, and where to.
+ *
+ * The rule is deliberately narrow, because a wrong redirect here is worse than
+ * none:
+ *
+ *   * a **loopback / localhost** host is development — never canonicalised, so
+ *     `npm run dev` keeps working;
+ *   * a host that is **not** a `*.vercel.app` host is authoritative (a custom
+ *     domain, an internal name, a `file://` page) — never canonicalised;
+ *   * only a `*.vercel.app` host that differs from the canonical host is
+ *     canonicalised, which is exactly the reported failure.
+ *
+ * The route is preserved (`pathname` + `hash`) and the query string is dropped: a
+ * query on a wrong origin can only hold an OAuth `code`/`error` belonging to that
+ * origin, which must not be replayed on the canonical one.
+ *
+ * @param {object} [input]
+ * @param {string} [input.configured]    `VITE_SITE_URL`
+ * @param {string} [input.hostname]      the host this page was served from
+ * @param {string} [input.pathname]      the current path, preserved
+ * @param {string} [input.hash]          the current hash route, preserved
+ * @param {string} [input.defaultOrigin] the built-in production domain
+ * @returns {string} an absolute URL to move to, or '' when no move is needed.
+ */
+export function canonicalRedirectFor({
+  configured = '',
+  hostname = '',
+  pathname = '/',
+  hash = '',
+  defaultOrigin = DEFAULT_CANONICAL_ORIGIN,
+} = {}) {
+  const host = String(hostname || '').trim().toLowerCase();
+  if (!host || isLoopbackHostname(host)) return '';
+  if (!host.endsWith('.vercel.app')) return '';
+
+  // A malformed or non-https `VITE_SITE_URL` must not silently disable the guard:
+  // the built-in production domain is tried next, and only when neither is usable
+  // is no redirect made at all.
+  const canonical = parseHttpsOrigin(configured) || parseHttpsOrigin(defaultOrigin);
+  if (!canonical) return '';
+  if (canonical.hostname.toLowerCase() === host) return '';
+
+  const path = String(pathname || '/') || '/';
+  return `${canonical.origin}${path}${String(hash || '')}`;
 }
 
 /**

@@ -51,8 +51,10 @@ Thumbs.db
 # Temp files created by the atomic writer
 .*.tmp
 *.corrupt
-start.bat
-
-.vercel
+start.bat.vercel
 .env*
-desktop/
+# The desktop application's source is tracked; its build outputs are excluded by
+# desktop/.gitignore (node_modules/, release/, generated/). The previous rule
+# ignored the whole desktop/ directory, which silently dropped new source files
+# — including the offline page the shell loads when the deployed site cannot be
+# reached.

@@ -11,12 +11,36 @@
 // listed in Supabase → Authentication → URL Configuration.
 
 import { supabase, supabaseConfigured } from './lib/supabase.js';
+import {
+  beginDesktopAuth, cancelDesktopAuth, isDesktop, onDesktopAuthCallback, openExternal,
+} from './lib/runtime.js';
 import { escapeHtml, icon, refreshIcons, spinner, toast } from './ui.js';
 
 const RECOVERY_FLAG = 'seedmail.pending-recovery';
 const REDIRECT_PATH = '/';
 
 export const AUTH_ROUTES = ['login', 'signup', 'forgot', 'update-password', 'verify'];
+
+/**
+ * Whether an OAuth callback was sitting in the URL when this module loaded.
+ *
+ * Read once, at import time, before supabase-js runs: on a successful PKCE
+ * exchange the library removes `code` from the URL itself, so a `code` still
+ * present after the session restore means the exchange did not happen. That is
+ * the difference between "sign-in succeeded" and "the account was created but no
+ * session exists", which is exactly the state that used to be silent.
+ */
+const CALLBACK_IN_URL = (() => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('code') || params.has('error') || params.has('error_code') || params.has('error_description');
+  } catch (_) {
+    return false;
+  }
+})();
+
+/** Why a desktop sign-in did not produce a session. Empty when there is none. */
+let desktopAuthError = '';
 
 /**
  * How long session restoration may take before the UI gives up and offers a
@@ -73,6 +97,48 @@ function withTimeout(promise, ms, onTimeout) {
 
 function redirectTo() {
   return `${window.location.origin}${REDIRECT_PATH}`;
+}
+
+/**
+ * Removes one-shot OAuth parameters from the address bar.
+ *
+ * Called only *after* the session restore has completed, because supabase-js
+ * reads them while it initialises and stripping them first would break the
+ * exchange. On success the library has already removed `code`; this catches the
+ * failure case (and any `error`/`state` left behind), so a page refresh cannot
+ * replay a spent code — the "duplicate callback processing" failure mode.
+ */
+function stripCallbackParams() {
+  try {
+    const url = new URL(window.location.href);
+    let changed = false;
+    for (const key of ['code', 'state', 'error', 'error_code', 'error_description']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) window.history.replaceState(window.history.state, '', url.toString());
+  } catch (_) {
+    // A URL that cannot be parsed needs no cleanup.
+  }
+}
+
+/**
+ * A meaningful, non-sensitive explanation for a callback that did not produce a
+ * session. Shown on the sign-in screen; never asserts a success that did not
+ * happen.
+ */
+export function callbackErrorMessage() {
+  if (!CALLBACK_IN_URL || currentSession) return '';
+  return 'The sign-in came back to the application, but no session could be established. ' +
+    'Please try again — if it keeps happening, check that this exact address is listed in ' +
+    "Supabase → Authentication → URL Configuration → Redirect URLs.";
+}
+
+/** A desktop sign-in failure, for the sign-in screen. Empty when there is none. */
+export function desktopAuthErrorMessage() {
+  return desktopAuthError;
 }
 
 export function isRecoveryPending() {
@@ -218,6 +284,11 @@ export function disposeAuth() {
     subscription.unsubscribe();
     subscription = null;
   }
+  if (removeDesktopAuthListener) {
+    removeDesktopAuthListener();
+    removeDesktopAuthListener = null;
+  }
+  desktopAuthInstalled = false;
 }
 
 export function isAuthListenerAttached() {
@@ -264,6 +335,9 @@ export async function bootstrapAuth({ timeoutMs = AUTH_INIT_TIMEOUT_MS } = {}) {
   currentSession = result?.data?.session || null;
   if (currentSession) scheduleProfileLoad(currentSession.user.id);
   else currentProfile = null;
+  // The callback has now been processed (successfully or not), so the one-shot
+  // parameters can be cleared without affecting the exchange.
+  stripCallbackParams();
   return currentSession;
 }
 
@@ -287,14 +361,20 @@ export async function signIn(email, password) {
  * Supabase keeps provider tokens in the browser session, and a Gmail refresh
  * token must never live there — it is encrypted and stored server-side only.
  *
- * The call redirects the browser to Google. When Google returns to this origin,
- * the PKCE code exchange configured in lib/supabase.js (`detectSessionInUrl`)
- * resolves the session and the normal auth-state handling takes over. New users
- * are created by Supabase on first sign-in; existing users are matched by their
- * verified Google identity, so no duplicate account is created.
+ * Two places, one flow each:
+ *
+ *   * **Web** — Supabase redirects this origin to Google, and `detectSessionInUrl`
+ *     exchanges the returned code on the way back. `redirectTo` is this origin,
+ *     which app.js has already canonicalised away from any Vercel deployment
+ *     hostname (see app.js → canonicaliseOrigin) so the code verifier and the
+ *     callback are guaranteed to be on the same origin.
+ *
+ *   * **Desktop** — see signInWithGoogleInBrowser below. The application window
+ *     never renders Google's pages.
  */
 export async function signInWithGoogle() {
   if (!supabase) throw new Error('Supabase is not configured.');
+  if (isDesktop()) return signInWithGoogleInBrowser();
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
@@ -305,6 +385,101 @@ export async function signInWithGoogle() {
     },
   });
   if (error) throw new Error(friendlyAuthError(error));
+}
+
+/**
+ * Desktop sign-in: complete Google authentication in the user's own browser.
+ *
+ * Google must not be rendered inside an application window — an embedded browser
+ * has its own cookie jar, so the person's real Chrome/Edge login is unavailable
+ * and they would have to type their Google credentials again — and the window
+ * must never be weakened (contextIsolation, sandbox and webSecurity all stay on)
+ * to make a redirect work. So:
+ *
+ *   1. the shell opens a one-shot loopback listener and returns its exact URL;
+ *   2. Supabase is asked for the authorisation URL with `skipBrowserRedirect`,
+ *      which also stores the PKCE code verifier in *this* window's storage;
+ *   3. that URL is handed to the operating system, which opens the default
+ *      browser with the person's existing Google session available;
+ *   4. Google returns to Supabase, which redirects to the loopback URL; the
+ *      shell delivers the code to this window, which exchanges it here — where
+ *      the verifier lives — and the normal auth-state handling takes over.
+ *
+ * No token, code or verifier is written to a log, a URL the application reads
+ * back, or storage of our own making: the code is single-use, and the exchange is
+ * Supabase's own `exchangeCodeForSession`. The already-open application page is
+ * the only thing that looks inside the page.
+ */
+async function signInWithGoogleInBrowser() {
+  const started = await beginDesktopAuth();
+  if (!started?.redirectUrl) {
+    throw new Error('The desktop sign-in bridge is unavailable. Restart Seed Code Mail and try again.');
+  }
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      // Return the URL instead of navigating this window, so it can be opened by
+      // the operating system. Everything else about the flow is unchanged.
+      skipBrowserRedirect: true,
+      redirectTo: started.redirectUrl,
+      queryParams: { prompt: 'select_account' },
+    },
+  });
+  if (error) throw new Error(friendlyAuthError(error));
+
+  const url = String(data?.url || '');
+  if (!url) throw new Error('Supabase did not return a Google authorization URL.');
+
+  const opened = await Promise.resolve(openExternal(url));
+  if (!opened) {
+    await cancelDesktopAuth();
+    throw new Error('Could not open your default browser for Google sign-in.');
+  }
+}
+
+/**
+ * Installs the desktop-only handler for a code returned by the system browser.
+ *
+ * Idempotent, and a no-op on the web, where the callback is processed from this
+ * page's own URL instead. A failure is reported to the UI (`AUTH_ERROR`) rather
+ * than swallowed, so a sign-in that did not produce a session can never look like
+ * one that did.
+ */
+let desktopAuthInstalled = false;
+let removeDesktopAuthListener = null;
+
+export function installDesktopAuthCallback() {
+  if (desktopAuthInstalled || !supabase || !isDesktop()) return;
+  desktopAuthInstalled = true;
+  removeDesktopAuthListener = onDesktopAuthCallback(async (payload = {}) => {
+    const code = String(payload.code || '');
+    const failure = String(payload.error || '');
+
+    if (failure) {
+      desktopAuthError = /access_denied/i.test(failure)
+        ? 'Google sign-in was cancelled.'
+        : 'Google sign-in could not be completed. Please try again.';
+      notify('AUTH_ERROR', currentSession);
+      return;
+    }
+    if (!code) return;
+
+    desktopAuthError = '';
+    try {
+      // Single-use code, exchanged here because the PKCE verifier was stored here.
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      // SIGNED_IN then drives the UI, which lands on the Inbox.
+    } catch (error) {
+      desktopAuthError =
+        'Your Google account was verified, but Seed Code Mail could not finish establishing the ' +
+        'session. Please try again.';
+      // The message only — never the code, verifier or token.
+      console.error('[Seed Code Mail] desktop sign-in exchange failed:', error?.message || error);
+      notify('AUTH_ERROR', currentSession);
+    }
+  });
 }
 
 export async function signUp(email, password, displayName = '') {
@@ -626,7 +801,10 @@ function renderLogin(container, urlError) {
     { footer: authNav('login') },
   );
   refreshIcons(container);
-  if (urlError) showError(container, urlError);
+  // A URL error is the most specific; then a desktop failure; then a callback
+  // that produced no session. A failure is always shown, never silently dropped.
+  const initialError = urlError || desktopAuthErrorMessage() || callbackErrorMessage();
+  if (initialError) showError(container, initialError);
   bindGoogle(container, (message) => showError(container, message));
 
   const form = container.querySelector('#auth-form');

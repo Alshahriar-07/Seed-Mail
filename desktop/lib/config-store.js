@@ -4,18 +4,27 @@
 //
 // What lives here
 // ---------------
-// The desktop application has to hand the bundled worker two things it cannot
-// discover on its own: the Supabase project URL and publishable key (public —
-// the same values the web bundle ships), and the Supabase **service-role key**
-// (secret — the worker needs it to claim queued campaigns). The user enters them
-// once; they are stored on this machine only.
+// The bundled worker needs two things it cannot discover on its own: the
+// Supabase project URL and publishable key (public — the same values the web
+// bundle ships, normally taken from `generated/public-config.json`), and — only
+// where a deployment provides one — the Supabase **service-role key** the worker
+// needs to claim queued campaigns.
 //
-// Why not embed them in the executable
-// ------------------------------------
+// There is no setup form any more. The public values are compiled in at build
+// time, and a privileged credential is never requested from the end user: it can
+// only be provisioned out of band, by the organisation that owns the deployment,
+// either as `SUPABASE_SERVICE_ROLE_KEY` in the process environment or as a record
+// in this file written by an administrator.
+//
+// Why not embed the secret in the executable
+// ------------------------------------------
 // A service-role key is a server credential. Bundling it would publish it to
 // everyone who downloads the installer, and would let any installed copy act
 // with full database access. It is therefore NEVER compiled into the app, the
 // installer, or the frontend bundle.
+//
+// An existing record written by the previous configuration screen is still read,
+// so an installation that was already set up keeps working.
 //
 // How it is protected at rest
 // ---------------------------
@@ -23,8 +32,8 @@
 // this is DPAPI, scoped to the signed-in user). The whole record is encrypted
 // before it is written, so neither the service-role key nor the address of the
 // project is left in a readable file. When no backend is available the record is
-// written as plain JSON with a clear marker, and the application says so rather
-// than silently pretending it was encrypted.
+// written as plain JSON with a clear marker rather than silently pretending it
+// was encrypted.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -53,9 +62,11 @@ function configFilePath() {
  * desktop app independent of `VITE_` variables, which do not exist here.
  */
 function publicDefaults() {
+  // `generated/` is copied into the packaged app (package.json → build.files), so
+  // this one path is correct both in development (desktop/generated) and inside
+  // the asar (app.asar/generated).
   const candidates = [
     path.join(__dirname, '..', 'generated', 'public-config.json'),
-    path.join(process.resourcesPath || '', 'app', 'generated', 'public-config.json'),
   ];
   for (const candidate of candidates) {
     try {

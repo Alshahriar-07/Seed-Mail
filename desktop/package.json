@@ -3,7 +3,7 @@
   "productName": "Seed Code Mail",
   "version": "3.0.0",
   "private": true,
-  "description": "Seed Code Mail desktop application — the web UI, the bundled campaign SMTP worker, and the cloud API.",
+  "description": "Seed Code Mail desktop application — a hardened shell around the deployed web application plus the bundled campaign SMTP worker.",
   "author": "Seed Code Mail",
   "license": "UNLICENSED",
   "main": "main.js",
@@ -32,18 +32,12 @@
     "files": [
       "main.js",
       "preload.js",
-      "preload-setup.js",
-      "setup.html",
+      "offline.html",
       "lib/**/*",
       "generated/**/*",
       "package.json"
     ],
     "extraResources": [
-      {
-        "from": "../dist",
-        "to": "app",
-        "filter": ["**/*"]
-      },
       {
         "from": "../build/worker-dist/SeedMailWorker",
         "to": "worker",

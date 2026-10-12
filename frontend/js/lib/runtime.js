@@ -78,6 +78,62 @@ export function openExternal(url) {
 }
 
 /**
+ * Desktop only: opens a one-shot loopback listener for the OAuth return, and
+ * resolves with its exact URL (`{ redirectUrl }`), or `null` when there is no
+ * desktop shell / the bridge refused.
+ *
+ * The URL is created by the shell, not by this page: a listener bound to
+ * 127.0.0.1 on a fixed port is what the operating system's browser can reach, and
+ * the shell — which owns the process — is the only thing that can open it. The
+ * page never opens a port and never receives a credential from it beyond the
+ * single-use authorisation code.
+ */
+export async function beginDesktopAuth() {
+  const bridge = rawBridge();
+  if (!bridge || typeof bridge.beginAuthCallback !== 'function') return null;
+  try {
+    const result = await bridge.beginAuthCallback();
+    const redirectUrl = String(result?.redirectUrl || '');
+    if (!redirectUrl) return null;
+    // Only loopback is ever a legitimate desktop callback: a bridge naming
+    // anything else is malformed and refused rather than used as a redirect
+    // target on a remote host.
+    const parsed = new URL(redirectUrl);
+    if (parsed.protocol !== 'http:' || !isLoopbackHostname(parsed.hostname)) return null;
+    return { redirectUrl };
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Desktop only: closes a pending loopback listener (a cancelled sign-in). */
+export async function cancelDesktopAuth() {
+  const bridge = rawBridge();
+  if (!bridge || typeof bridge.cancelAuthCallback !== 'function') return false;
+  try {
+    await bridge.cancelAuthCallback();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Desktop only: subscribes to the authorization code returned by the system
+ * browser, one delivery per sign-in. Returns an unsubscribe function.
+ */
+export function onDesktopAuthCallback(handler) {
+  const bridge = rawBridge();
+  if (!bridge || typeof bridge.onAuthCallback !== 'function') return () => {};
+  try {
+    const unsubscribe = bridge.onAuthCallback(handler);
+    return typeof unsubscribe === 'function' ? unsubscribe : () => {};
+  } catch (_) {
+    return () => {};
+  }
+}
+
+/**
  * The desktop worker connection, or null when not running on the desktop.
  *
  * Returns `{ workerUrl, workerToken, appVersion, platform }`. `workerUrl` is ''

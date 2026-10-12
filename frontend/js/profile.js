@@ -13,9 +13,10 @@
 import { api } from './api.js';
 import {
   currentUser, displayName, signOut, sendPasswordReset, updateDisplayName,
-  requestEmailChange, accountCreatedAt,
+  requestEmailChange, accountCreatedAt, avatarUrl,
 } from './auth.js';
 import { gmail, isNotConfigured } from './lib/gmail.js';
+import { avatarMarkup, refreshAvatars } from './lib/avatar.js';
 import {
   escapeHtml, icon, formatDate, refreshIcons, toast, spinner, confirmDialog,
 } from './ui.js';
@@ -117,6 +118,17 @@ export async function render(container) {
       <div>
         <div class="card">
           <div class="card-head"><h3>${icon('user-round', 16)} Account</h3></div>
+          <!-- The account's own picture, when the provider supplied one. It is the
+               only avatar in the application backed by a real image source, and
+               it degrades to the user's initials when it is absent or fails to
+               load (see lib/avatar.js). -->
+          <div class="profile-identity">
+            ${avatarMarkup({ name: displayName(), email: user?.email }, { size: 56, kind: 'account', src: avatarUrl() })}
+            <div class="profile-identity-text">
+              <span class="profile-identity-name">${escapeHtml(displayName() || '—')}</span>
+              <span class="profile-identity-email">${escapeHtml(user?.email || '—')}</span>
+            </div>
+          </div>
           <div class="kv"><span>Email address</span><span>${escapeHtml(user?.email || '—')}</span></div>
           <div class="kv"><span>Account created</span><span>${escapeHtml(accountCreatedAt() ? formatDate(accountCreatedAt()) : 'Not reported')}</span></div>
           <div class="kv"><span>User id</span><span class="mono cell-muted">${escapeHtml(user?.id || '—')}</span></div>
@@ -162,6 +174,7 @@ export async function render(container) {
     </div>`;
 
   refreshIcons(container);
+  refreshAvatars(container);
 
   // --- Gmail flag from the OAuth callback -----------------------------------
 

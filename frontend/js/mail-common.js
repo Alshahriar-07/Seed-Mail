@@ -29,9 +29,10 @@ import {
   escapeHtml, icon, formatDate, formatListDate, refreshIcons, skeleton, emptyState, toast,
   confirmDialog,
 } from './ui.js';
-import { avatarMarkup, refreshAvatars } from './lib/avatar.js';
+import { avatarMarkup, avatarSource, refreshAvatars } from './lib/avatar.js';
 import { listAction, readerAction } from './lib/shortcuts.js';
 import { navigate } from './app.js';
+import { avatarUrl, currentUser, displayName } from './auth.js';
 import { isDesktop, openExternal } from './lib/runtime.js';
 
 // Where Gmail consent is completed when running as a desktop application. The
@@ -40,6 +41,26 @@ import { isDesktop, openExternal } from './lib/runtime.js';
 const WEB_APP_ORIGIN = 'https://mrseedmail.vercel.app';
 
 const PAGE_SIZE = 25;
+
+/**
+ * The signed-in account's own address and picture.
+ *
+ * This is the only identity for which a real profile picture may be shown: it
+ * comes from the account's own auth metadata. Everyone else keeps initials,
+ * because Gmail's API exposes a sender's name and address and no photo — see
+ * lib/avatar.js. Reading it per call (rather than caching) means a changed
+ * account is reflected on the next render.
+ */
+function accountIdentity() {
+  const user = currentUser() || {};
+  return { email: String(user.email || ''), src: avatarUrl() };
+}
+
+/** Resolves a person's picture against the signed-in account, never inventing one. */
+function pictureFor(person) {
+  const account = accountIdentity();
+  return avatarSource(person, { accountEmail: account.email, accountSrc: account.src });
+}
 
 // --- compose handoff --------------------------------------------------------
 // The reader's "Reply" and the Inbox's "Compose" both need to fill the Compose
@@ -282,7 +303,7 @@ function messageRow(message, { mailbox }) {
     <li class="mail-row ${unread ? 'is-unread' : ''} ${current ? 'is-current' : ''}" data-id="${escapeHtml(message.id)}"${current ? ' aria-current="true"' : ''}>
       <button class="mail-open" data-open="${escapeHtml(message.id)}"
         aria-label="${escapeHtml(`${unread ? 'Unread. ' : ''}${mailbox === 'sent' ? 'To' : 'From'} ${name}. ${subject}. ${fullWhen}`)}">
-        ${avatarMarkup({ name: person.name, email: person.email }, { size: 34, kind: 'sender', className: 'mail-avatar' })}
+        ${avatarMarkup({ name: person.name, email: person.email }, { size: 34, kind: 'sender', className: 'mail-avatar', src: pictureFor(person) })}
         <span class="mail-identity">
           <span class="mail-who" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
           ${more ? `<span class="mail-more-count">${escapeHtml(more)}</span>` : ''}
@@ -732,6 +753,15 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
 
   const isSent = mailbox === 'sent';
   const person = isSent ? first(message.to) : (message.from || { name: '', email: '' });
+  // The heading identity is the **sender**. In the Inbox that is the message's
+  // From header; in Sent it is the signed-in account, because that is the address
+  // Gmail accepted the message from. It is also the one identity in the
+  // application whose real picture is known, so the Sent header can show it while
+  // an Inbox sender keeps well-formed initials.
+  const account = accountIdentity();
+  const sender = isSent
+    ? { name: displayName() || account.email || 'You', email: account.email || '' }
+    : person;
   const subject = message.subject || '(no subject)';
   const inlineImages = await loadInlineImages(message);
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
@@ -742,12 +772,12 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
   shell.innerHTML = `
     <article class="card reader-card">
       <header class="reader-head">
-        ${avatarMarkup({ name: person.name, email: person.email }, { size: 46, kind: 'sender' })}
+        ${avatarMarkup({ name: sender.name, email: sender.email }, { size: 46, kind: 'sender', src: pictureFor(sender) })}
         <div class="reader-head-main">
           <h1 class="reader-subject" id="reader-subject">${escapeHtml(subject)}</h1>
           <div class="reader-head-line">
-            <span class="reader-from">${escapeHtml(person.name || person.email || '(unknown sender)')}</span>
-            ${person.name && person.email ? `<span class="reader-from-addr">&lt;${escapeHtml(person.email)}&gt;</span>` : ''}
+            <span class="reader-from">${escapeHtml(sender.name || sender.email || '(unknown sender)')}</span>
+            ${sender.name && sender.email ? `<span class="reader-from-addr">&lt;${escapeHtml(sender.email)}&gt;</span>` : ''}
           </div>
           <div class="reader-recipients" id="reader-recipients"></div>
         </div>
@@ -899,7 +929,7 @@ export async function renderReader(container, { mailbox = 'inbox', messageId } =
     setComposePrefill({
       to: '',
       subject: /^fwd:/i.test(subject) ? subject : `Fwd: ${subject}`,
-      text: `\n\n---------- Forwarded message ----------\nFrom: ${person.name ? `${person.name} <${person.email}>` : person.email || ''}\nDate: ${dateLabel}\nSubject: ${subject}\n\n${
+      text: `\n\n---------- Forwarded message ----------\nFrom: ${sender.name ? `${sender.name} <${sender.email}>` : sender.email || ''}\nDate: ${dateLabel}\nSubject: ${subject}\n\n${
         emailPlainText(message.body || {})
       }`,
     });

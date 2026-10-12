@@ -55,6 +55,32 @@ export function safeImageUrl(value) {
 }
 
 /**
+ * The picture to show for a person, without ever inventing one.
+ *
+ * A message header or list row can only legitimately show a *picture* when the
+ * person is the signed-in account holder: that is the one address whose photo the
+ * application genuinely has (from the account's own auth metadata). Any other
+ * address — an Inbox sender, a campaign recipient — has no trustworthy photo
+ * source, because Gmail's API exposes a name and an address and nothing else, so
+ * it keeps its initials. This is the rule that prevents one account's picture
+ * from being shown next to another account's message.
+ *
+ * The comparison is on the whole, lower-cased address and never on a partial
+ * match, and the URL is accepted only when it passes `safeImageUrl`.
+ *
+ * @param {{ name?: string, email?: string, src?: string }} person
+ * @param {{ accountEmail?: string, accountSrc?: string }} [account]
+ */
+export function avatarSource(person = {}, { accountEmail = '', accountSrc = '' } = {}) {
+  const own = String(accountEmail || '').trim().toLowerCase();
+  const email = String(person?.email || '').trim().toLowerCase();
+  if (own && email && own === email) {
+    return safeImageUrl(accountSrc) || safeImageUrl(person?.src);
+  }
+  return safeImageUrl(person?.src);
+}
+
+/**
  * Avatar markup.
  *
  * The initials are always rendered underneath the image, so the fallback needs no
@@ -63,13 +89,15 @@ export function safeImageUrl(value) {
  * actually failed, which is what turns a broken-image icon into a clean fallback.
  *
  * @param {{ name?: string, email?: string, src?: string }} person
- * @param {{ size?: number, kind?: 'account'|'sender', className?: string }} [options]
+ * @param {{ size?: number, kind?: 'account'|'sender', className?: string, src?: string }} [options]
+ *   `src` on the options object overrides the person's own `src`, so a caller can
+ *   resolve the picture through `avatarSource` without rebuilding the object.
  */
-export function avatarMarkup(person = {}, { size = 32, kind = 'sender', className = '' } = {}) {
+export function avatarMarkup(person = {}, { size = 32, kind = 'sender', className = '', src: optionSrc = '' } = {}) {
   const name = String(person.name ?? '').trim();
   const email = String(person.email ?? '').trim();
   const initials = personInitials(name, email);
-  const src = safeImageUrl(person.src);
+  const src = safeImageUrl(optionSrc) || safeImageUrl(person.src);
   const label = name || email;
   const accessible = label ? ` aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"` : '';
 
